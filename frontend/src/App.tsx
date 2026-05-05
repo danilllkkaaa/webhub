@@ -1,0 +1,76 @@
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useAuthStore } from './store/auth'
+import { useProjectStore } from './store/project'
+
+import LoginPage from './pages/admin/LoginPage'
+import ProjectsPage from './pages/admin/ProjectsPage'
+import DashboardPage from './pages/admin/DashboardPage'
+import WebinarListPage from './pages/admin/WebinarListPage'
+import WebinarFormPage from './pages/admin/WebinarFormPage'
+import TimelineEditorPage from './pages/admin/TimelineEditorPage'
+import AnalyticsPage from './pages/admin/AnalyticsPage'
+import BroadcastPage from './pages/admin/BroadcastPage'
+import SettingsPage from './pages/admin/SettingsPage'
+import ComingSoonPage from './pages/admin/ComingSoonPage'
+import CourseListPage from './pages/admin/CourseListPage'
+import CourseFormPage from './pages/admin/CourseFormPage'
+import CourseBuilderPage from './pages/admin/CourseBuilderPage'
+import CourseStudentsPage from './pages/admin/CourseStudentsPage'
+import RegisterPage from './pages/public/RegisterPage'
+import WatchPage from './pages/public/WatchPage'
+import CourseJoinPage from './pages/public/CourseJoinPage'
+import CourseLearnPage from './pages/public/CourseLearnPage'
+
+function RequireAuth({ children }: { children: React.ReactNode }) {
+  const token = useAuthStore((s) => s.token)
+  return token ? <>{children}</> : <Navigate to="/admin/login" replace />
+}
+
+function RequireProject({ children }: { children: React.ReactNode }) {
+  const projectId = useProjectStore((s) => s.currentProjectId)
+  return projectId ? <>{children}</> : <Navigate to="/admin/projects" replace />
+}
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <Routes>
+        {/* Auth */}
+        <Route path="/admin/login" element={<LoginPage />} />
+
+        {/* Project selector */}
+        <Route path="/admin/projects" element={<RequireAuth><ProjectsPage /></RequireAuth>} />
+
+        {/* Admin — requires both auth and a selected project */}
+        <Route path="/admin" element={<RequireAuth><RequireProject><DashboardPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/webinars" element={<RequireAuth><RequireProject><WebinarListPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/webinars/new" element={<RequireAuth><RequireProject><WebinarFormPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/webinars/:id/edit" element={<RequireAuth><RequireProject><WebinarFormPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/webinars/:id/timeline" element={<RequireAuth><RequireProject><TimelineEditorPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/webinars/:id/analytics" element={<RequireAuth><RequireProject><AnalyticsPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/webinars/:id/broadcast" element={<RequireAuth><RequireProject><BroadcastPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/courses" element={<RequireAuth><RequireProject><CourseListPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/courses/new" element={<RequireAuth><RequireProject><CourseFormPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/courses/:id/settings" element={<RequireAuth><RequireProject><CourseFormPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/courses/:id/builder" element={<RequireAuth><RequireProject><CourseBuilderPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/courses/:id/students" element={<RequireAuth><RequireProject><CourseStudentsPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/settings"      element={<RequireAuth><SettingsPage /></RequireAuth>} />
+        <Route path="/admin/billing"       element={<RequireAuth><RequireProject><ComingSoonPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/staff"         element={<RequireAuth><RequireProject><ComingSoonPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/bonuses"       element={<RequireAuth><RequireProject><ComingSoonPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/achievements"  element={<RequireAuth><RequireProject><ComingSoonPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/coming-soon"   element={<RequireAuth><RequireProject><ComingSoonPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/about"         element={<RequireAuth><ComingSoonPage /></RequireAuth>} />
+        <Route path="/admin/help"          element={<RequireAuth><ComingSoonPage /></RequireAuth>} />
+
+        {/* Public */}
+        <Route path="/join/:inviteToken" element={<RegisterPage />} />
+        <Route path="/webinars/:slug/watch" element={<WatchPage />} />
+        <Route path="/course/join/:inviteToken" element={<CourseJoinPage />} />
+        <Route path="/course/:slug/learn" element={<CourseLearnPage />} />
+
+        <Route path="*" element={<Navigate to="/admin/projects" replace />} />
+      </Routes>
+    </BrowserRouter>
+  )
+}
