@@ -5,6 +5,7 @@ const pid = () => useProjectStore.getState().currentProjectId
 
 export type CourseStatus = 'draft' | 'published' | 'archived'
 export type LessonType = 'video' | 'text'
+export type CourseStudentStatus = 'pending' | 'approved' | 'rejected'
 
 export interface Course {
   id: number
@@ -39,6 +40,7 @@ export interface CourseLesson {
   lesson_type: LessonType
   video_url: string | null
   video_id: string | null
+  bunny_video_id: string | null
   content: string | null
   position: number
   is_published: boolean
@@ -54,6 +56,7 @@ export interface CourseStudent {
   phone: string
   email: string
   telegram: string | null
+  status: CourseStudentStatus
   progress_percent: number
   completed_lessons: number
   total_lessons: number
@@ -102,4 +105,10 @@ export const courseApi = {
     api.get<CourseLearn>(`/course/${slug}/learn`, { params: { token } }).then((r) => r.data),
   completeLesson: (lessonId: number, token: string) =>
     api.post(`/course/lessons/${lessonId}/complete`, null, { params: { token } }),
+  updateStudentStatus: (_courseId: number, studentId: number, data: { status: CourseStudentStatus }) =>
+    api.patch<CourseStudent>(`/courses/students/${studentId}`, data).then((r) => r.data),
+  register: (token: string, data: { full_name: string; email: string; password?: string; password_confirm?: string }) =>
+    api.post<CourseStudent>(`/course/invite/${token}/join`, { name: data.full_name, email: data.email, phone: '' }).then((r) => r.data),
+  login: (token: string, data: { email: string; password: string }) =>
+    api.post<CourseStudent>(`/course/invite/${token}/join`, { name: data.email, email: data.email, phone: '' }).then((r) => r.data),
 }

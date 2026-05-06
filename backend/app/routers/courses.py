@@ -11,7 +11,7 @@ from openpyxl.utils import get_column_letter
 
 from app.database import get_db
 from app.models.user import User
-from app.models.course import Course, CourseModule, CourseLesson, CourseStudent, CourseLessonProgress, CourseStatus
+from app.models.course import Course, CourseModule, CourseLesson, CourseStudent, CourseLessonProgress, CourseStatus, CourseStudentStatus
 from app.schemas.course import (
     CourseCreate, CourseUpdate, CourseOut, CourseStructureOut,
     ModuleCreate, ModuleUpdate, ModuleOut,
@@ -96,6 +96,7 @@ async def _student_out(student: CourseStudent, db: AsyncSession) -> CourseStuden
         phone=student.phone,
         email=student.email,
         telegram=student.telegram,
+        status=student.status,
         progress_percent=percent,
         completed_lessons=completed,
         total_lessons=total,
@@ -365,3 +366,20 @@ async def complete_lesson(lesson_id: int, token: str, db: AsyncSession = Depends
     student.last_seen_at = datetime.utcnow()
     await db.commit()
     return {"ok": True}
+
+
+@router.patch("/courses/students/{student_id}", response_model=CourseStudentOut)
+async def update_student_status(
+    student_id: int,
+    data: dict,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    student = (await db.execute(select(CourseStudent).where(CourseStudent.id == student_id))).scalar_one_or_none()
+    if not student:
+        raise HTTPException(status_code=404, detail="Student not found")
+    if "status" in data:
+        student.status = CourseStudentStatus(data["status"])
+    await db.commit()
+    await db.refresh(student)
+    return await _student_out(student, db)

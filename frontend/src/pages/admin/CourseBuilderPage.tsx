@@ -2,7 +2,17 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { CourseLesson, CourseModule, courseApi } from '../../api/courses'
-import { BookOpen, Plus, Trash2 } from 'lucide-react'
+import VideoUploader from '../../components/VideoUploader'
+import { BookOpen, Plus, Trash2, Video, FileText } from 'lucide-react'
+
+interface LessonDraft {
+  title: string
+  lesson_type: 'video' | 'text'
+  bunny_video_id: string
+  content: string
+}
+
+const defaultDraft = (): LessonDraft => ({ title: '', lesson_type: 'video', bunny_video_id: '', content: '' })
 
 export default function CourseBuilderPage() {
   const { id } = useParams<{ id: string }>()
@@ -11,7 +21,7 @@ export default function CourseBuilderPage() {
   const [modules, setModules] = useState<CourseModule[]>([])
   const [lessons, setLessons] = useState<CourseLesson[]>([])
   const [moduleTitle, setModuleTitle] = useState('')
-  const [lessonDraft, setLessonDraft] = useState<Record<number, { title: string; lesson_type: 'video' | 'text'; video_url: string; content: string }>>({})
+  const [lessonDraft, setLessonDraft] = useState<Record<number, LessonDraft>>({})
 
   const load = () => courseApi.structure(courseId).then((data) => {
     setCourseTitle(data.course.title)
@@ -28,6 +38,10 @@ export default function CourseBuilderPage() {
     return map
   }, [lessons])
 
+  const draft = (moduleId: number): LessonDraft => lessonDraft[moduleId] ?? defaultDraft()
+  const setDraft = (moduleId: number, patch: Partial<LessonDraft>) =>
+    setLessonDraft((prev) => ({ ...prev, [moduleId]: { ...draft(moduleId), ...patch } }))
+
   const addModule = async (e: FormEvent) => {
     e.preventDefault()
     if (!moduleTitle.trim()) return
@@ -37,16 +51,18 @@ export default function CourseBuilderPage() {
   }
 
   const addLesson = async (moduleId: number) => {
-    const draft = lessonDraft[moduleId]
-    if (!draft?.title?.trim()) return
+    const d = draft(moduleId)
+    if (!d.title.trim()) return
+    if (d.lesson_type === 'video' && !d.bunny_video_id) return
+
     await courseApi.createLesson(moduleId, {
-      title: draft.title.trim(),
-      lesson_type: draft.lesson_type,
-      video_url: draft.video_url || undefined,
-      content: draft.content || undefined,
+      title: d.title.trim(),
+      lesson_type: d.lesson_type,
+      bunny_video_id: d.lesson_type === 'video' ? d.bunny_video_id : undefined,
+      content: d.lesson_type === 'text' ? d.content : undefined,
       position: lessonsByModule[moduleId]?.length ?? 0,
     })
-    setLessonDraft({ ...lessonDraft, [moduleId]: { title: '', lesson_type: 'video', video_url: '', content: '' } })
+    setDraft(moduleId, defaultDraft())
     load()
   }
 
@@ -58,14 +74,21 @@ export default function CourseBuilderPage() {
           <p className="text-sm text-gray-400">{courseTitle}</p>
         </div>
         <div className="flex gap-2">
-          <Link to={`/admin/courses/${courseId}/students`} className="border rounded-lg px-4 py-2 text-sm">Ученики</Link>
-          <Link to={`/admin/courses/${courseId}/settings`} className="border rounded-lg px-4 py-2 text-sm">Настройки</Link>
+          <Link to={`/admin/courses/${courseId}/students`} className="border rounded-lg px-4 py-2 text-sm hover:bg-gray-50 transition">Ученики</Link>
+          <Link to={`/admin/courses/${courseId}/settings`} className="border rounded-lg px-4 py-2 text-sm hover:bg-gray-50 transition">Настройки</Link>
         </div>
       </div>
 
       <form onSubmit={addModule} className="bg-white border rounded-xl p-4 mb-5 flex gap-3">
-        <input value={moduleTitle} onChange={(e) => setModuleTitle(e.target.value)} className="input flex-1" placeholder="Название нового модуля" />
-        <button className="bg-brand text-white rounded-lg px-4 py-2 text-sm font-semibold flex items-center gap-2"><Plus size={16} /> Модуль</button>
+        <input
+          value={moduleTitle}
+          onChange={(e) => setModuleTitle(e.target.value)}
+          className="flex-1 border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30"
+          placeholder="Название нового модуля"
+        />
+        <button className="bg-brand text-white rounded-lg px-4 py-2 text-sm font-semibold flex items-center gap-2 hover:bg-brand-dark transition">
+          <Plus size={16} /> Модуль
+        </button>
       </form>
 
       <div className="space-y-4">
@@ -75,47 +98,101 @@ export default function CourseBuilderPage() {
             Добавьте первый модуль курса
           </div>
         )}
+
         {modules.map((module) => {
-          const draft = lessonDraft[module.id] ?? { title: '', lesson_type: 'video' as const, video_url: '', content: '' }
+          const d = draft(module.id)
           return (
             <div key={module.id} className="bg-white border rounded-xl overflow-hidden">
-              <div className="p-4 border-b flex items-center gap-3">
+              {/* Module header */}
+              <div className="p-4 border-b flex items-center gap-3 bg-gray-50">
                 <div className="flex-1">
-                  <h2 className="font-semibold">{module.title}</h2>
+                  <h2 className="font-semibold text-sm">{module.title}</h2>
                   <p className="text-xs text-gray-400">{lessonsByModule[module.id]?.length ?? 0} уроков</p>
                 </div>
-                <button onClick={() => courseApi.deleteModule(module.id).then(load)} className="text-gray-400 hover:text-red-500"><Trash2 size={16} /></button>
+                <button
+                  onClick={() => courseApi.deleteModule(module.id).then(load)}
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition"
+                >
+                  <Trash2 size={15} />
+                </button>
               </div>
+
+              {/* Lesson list */}
               <div className="divide-y">
                 {(lessonsByModule[module.id] ?? []).map((lesson) => (
                   <div key={lesson.id} className="p-4 flex gap-3 items-start">
-                    <div className="flex-1">
-                      <p className="font-medium text-sm">{lesson.title}</p>
-                      <p className="text-xs text-gray-400">{lesson.lesson_type === 'video' ? 'Видео' : 'Текст'} {lesson.video_id ? `· ${lesson.video_id}` : ''}</p>
-                      {lesson.content && <p className="text-sm text-gray-500 mt-2 whitespace-pre-wrap">{lesson.content}</p>}
+                    <div className="mt-0.5 text-gray-300">
+                      {lesson.lesson_type === 'video' ? <Video size={15} /> : <FileText size={15} />}
                     </div>
-                    <button onClick={() => courseApi.deleteLesson(lesson.id).then(load)} className="text-gray-400 hover:text-red-500"><Trash2 size={15} /></button>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm">{lesson.title}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {lesson.lesson_type === 'video' ? 'Видео' : 'Текст'}
+                        {lesson.bunny_video_id && (
+                          <span className="ml-2 font-mono text-brand">Bunny: {lesson.bunny_video_id.slice(0, 8)}…</span>
+                        )}
+                        {!lesson.bunny_video_id && lesson.video_id && (
+                          <span className="ml-2 font-mono text-gray-400">YT: {lesson.video_id}</span>
+                        )}
+                      </p>
+                      {lesson.content && <p className="text-sm text-gray-500 mt-2 whitespace-pre-wrap line-clamp-2">{lesson.content}</p>}
+                    </div>
+                    <button
+                      onClick={() => courseApi.deleteLesson(lesson.id).then(load)}
+                      className="p-1.5 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition shrink-0"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 ))}
               </div>
-              <div className="p-4 bg-gray-50 grid grid-cols-1 md:grid-cols-4 gap-3">
-                <input className="input md:col-span-2" placeholder="Название урока" value={draft.title} onChange={(e) => setLessonDraft({ ...lessonDraft, [module.id]: { ...draft, title: e.target.value } })} />
-                <select className="input" value={draft.lesson_type} onChange={(e) => setLessonDraft({ ...lessonDraft, [module.id]: { ...draft, lesson_type: e.target.value as 'video' | 'text' } })}>
-                  <option value="video">Видео</option>
-                  <option value="text">Текст</option>
-                </select>
-                <button onClick={() => addLesson(module.id)} className="bg-brand text-white rounded-lg text-sm font-semibold">Добавить урок</button>
-                {draft.lesson_type === 'video' ? (
-                  <input className="input md:col-span-4" placeholder="YouTube URL" value={draft.video_url} onChange={(e) => setLessonDraft({ ...lessonDraft, [module.id]: { ...draft, video_url: e.target.value } })} />
+
+              {/* Add lesson form */}
+              <div className="p-4 bg-gray-50 border-t space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <input
+                    className="sm:col-span-2 border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30"
+                    placeholder="Название урока"
+                    value={d.title}
+                    onChange={(e) => setDraft(module.id, { title: e.target.value })}
+                  />
+                  <select
+                    className="border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30"
+                    value={d.lesson_type}
+                    onChange={(e) => setDraft(module.id, { lesson_type: e.target.value as 'video' | 'text' })}
+                  >
+                    <option value="video">Видео</option>
+                    <option value="text">Текст</option>
+                  </select>
+                </div>
+
+                {d.lesson_type === 'video' ? (
+                  <VideoUploader
+                    title={d.title || 'Урок'}
+                    existingVideoId={d.bunny_video_id || null}
+                    onComplete={(vid) => setDraft(module.id, { bunny_video_id: vid })}
+                  />
                 ) : (
-                  <textarea className="input md:col-span-4 min-h-24" placeholder="Текст урока" value={draft.content} onChange={(e) => setLessonDraft({ ...lessonDraft, [module.id]: { ...draft, content: e.target.value } })} />
+                  <textarea
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 min-h-24"
+                    placeholder="Текст урока"
+                    value={d.content}
+                    onChange={(e) => setDraft(module.id, { content: e.target.value })}
+                  />
                 )}
+
+                <button
+                  onClick={() => addLesson(module.id)}
+                  disabled={!d.title.trim() || (d.lesson_type === 'video' && !d.bunny_video_id)}
+                  className="w-full py-2 bg-brand text-white rounded-lg text-sm font-semibold hover:bg-brand-dark transition disabled:opacity-40"
+                >
+                  Добавить урок
+                </button>
               </div>
             </div>
           )
         })}
       </div>
-      <style>{`.input{border:1px solid #d1d5db;border-radius:8px;padding:9px 12px;font-size:.875rem;background:white}`}</style>
     </AdminLayout>
   )
 }

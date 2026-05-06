@@ -47,4 +47,6 @@ export const webinarApi = {
   update: (id: number, data: Partial<WebinarCreate> & { status?: string }) =>
     api.patch<Webinar>(`/webinars/${id}`, data).then((r) => r.data),
   delete: (id: number) => api.delete(`/webinars/${id}`),
+  createScenario: (id: number, youtube_url: string) =>
+    api.post<Webinar>(`/webinars/${id}/create-scenario`, { youtube_url }).then((r) => r.data),
 }

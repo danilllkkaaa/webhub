@@ -1,36 +1,30 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import select, text
+from sqlalchemy import select
 
-from app.database import engine, Base
+from app.database import engine, AsyncSessionLocal
 from app.config import settings
-from app.core.security import hash_password, verify_password
-from app.core.security import generate_viewer_token
-from app.models import User, Webinar  # ensure all models are imported
+from app.core.security import hash_password, verify_password, generate_viewer_token
+from app.models import User, Webinar
 
-from app.routers import auth, webinars, registrations, watch, chat, timeline, analytics, public_webinar, broadcast, projects, courses
+from app.routers import auth, webinars, registrations, watch, chat, timeline, analytics, public_webinar, broadcast, projects, courses, videos
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        await conn.execute(text("ALTER TABLE webinars ADD COLUMN IF NOT EXISTS invite_token VARCHAR(64)"))
-        await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_webinars_invite_token ON webinars (invite_token)"))
-        await conn.execute(text("ALTER TABLE users ADD COLUMN IF NOT EXISTS full_name VARCHAR(255)"))
-        await conn.execute(text("ALTER TABLE webinars ADD COLUMN IF NOT EXISTS project_id INTEGER"))
-
-    # Seed admin user
-    from app.database import AsyncSessionLocal
+    # Seed admin user and tokens
     async with AsyncSessionLocal() as db:
+        # Generate invite tokens for webinars that don't have one
         result = await db.execute(select(Webinar).where(Webinar.invite_token.is_(None)))
-        for webinar in result.scalars().all():
+        webinars_to_update = result.scalars().all()
+        for webinar in webinars_to_update:
             webinar.invite_token = generate_viewer_token()
 
+        # Seed admin
         result = await db.execute(select(User).where(User.email == settings.admin_email))
         admin = result.scalar_one_or_none()
+        
         if not admin:
             admin = User(
                 email=settings.admin_email,
@@ -66,6 +60,7 @@ app.include_router(public_webinar.router)
 app.include_router(broadcast.router)
 app.include_router(projects.router)
 app.include_router(courses.router)
+app.include_router(videos.router)
 
 
 @app.get("/health")

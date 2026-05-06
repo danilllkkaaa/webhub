@@ -63,6 +63,7 @@ async def chat_ws(webinar_id: int, ws: WebSocket, token: str):
                 "author": msg.author_name,
                 "text": msg.text,
                 "ts": msg.created_at.isoformat(),
+                "is_admin": msg.registration_id is None,
             })
 
     try:
@@ -83,6 +84,10 @@ async def chat_ws(webinar_id: int, ws: WebSocket, token: str):
             # XSS sanitize: strip tags
             import html
             text = html.escape(text)
+
+            if await manager.is_banned(webinar_id, reg.id):
+                await manager.send_personal(ws, {"type": "error", "text": "Вы заблокированы в этом чате"})
+                continue
 
             if _is_rate_limited(reg.id):
                 await manager.send_personal(ws, {"type": "error", "text": "Слишком часто"})
@@ -105,6 +110,7 @@ async def chat_ws(webinar_id: int, ws: WebSocket, token: str):
                 "author": msg.author_name,
                 "text": msg.text,
                 "ts": msg.created_at.isoformat(),
+                "is_admin": False,
             })
 
     except WebSocketDisconnect:

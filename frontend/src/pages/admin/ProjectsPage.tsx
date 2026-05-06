@@ -44,7 +44,7 @@ export default function ProjectsPage() {
 
   const openProject = (p: Project) => {
     setProject(p.id, p.name, p.color)
-    navigate('/admin/webinars')
+    navigate('/admin')
   }
 
   const handleCreate = async (e: FormEvent) => {

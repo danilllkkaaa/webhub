@@ -3,14 +3,16 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm install
 
 COPY . .
 
 ARG VITE_API_URL=/api
 ARG VITE_WS_URL=/ws
+ARG VITE_BUNNY_CDN_HOSTNAME=
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_WS_URL=$VITE_WS_URL
+ENV VITE_BUNNY_CDN_HOSTNAME=$VITE_BUNNY_CDN_HOSTNAME
 
 RUN npm run build
 

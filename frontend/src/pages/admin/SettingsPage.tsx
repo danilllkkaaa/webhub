@@ -5,14 +5,22 @@ import { ChevronRight, X, Check, AlertCircle } from 'lucide-react'
 
 interface Profile {
   id: number
+  organization_id: number | null
   email: string
   full_name: string | null
+  role: 'owner' | 'admin' | 'manager'
 }
 
 type ActivePanel = 'name' | 'email' | 'password' | null
 
+const ROLE_LABELS: Record<Profile['role'], string> = {
+  owner: 'Владелец',
+  admin: 'Администратор',
+  manager: 'Менеджер',
+}
+
 function mask(value: string) {
-  if (!value) return '—'
+  if (!value) return '-'
   if (value.includes('@')) {
     const [local, domain] = value.split('@')
     return local.slice(0, 1) + '*'.repeat(Math.max(local.length - 2, 3)) + local.slice(-1) + '@' + domain
@@ -33,10 +41,10 @@ export default function SettingsPage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [active, setActive] = useState<ActivePanel>(null)
   const [saving, setSaving] = useState(false)
+  const [loadingError, setLoadingError] = useState('')
   const [error, setError] = useState('')
   const [success, setSuccess] = useState('')
 
-  // form states
   const [nameVal, setNameVal] = useState('')
   const [emailVal, setEmailVal] = useState('')
   const [curPass, setCurPass] = useState('')
@@ -44,68 +52,94 @@ export default function SettingsPage() {
   const [confPass, setConfPass] = useState('')
 
   useEffect(() => {
-    api.get('/auth/me').then((r) => setProfile(r.data))
+    api.get('/auth/me')
+      .then((r) => setProfile(r.data))
+      .catch(() => setLoadingError('Не удалось загрузить профиль'))
   }, [])
 
   const open = (panel: ActivePanel) => {
     setActive(panel)
     setError('')
     setSuccess('')
-    if (panel === 'name')  setNameVal(profile?.full_name ?? '')
+    if (panel === 'name') setNameVal(profile?.full_name ?? '')
     if (panel === 'email') setEmailVal(profile?.email ?? '')
-    if (panel === 'password') { setCurPass(''); setNewPass(''); setConfPass('') }
+    if (panel === 'password') {
+      setCurPass('')
+      setNewPass('')
+      setConfPass('')
+    }
   }
 
-  const close = () => { setActive(null); setError(''); setSuccess('') }
+  const close = () => {
+    setActive(null)
+    setError('')
+    setSuccess('')
+  }
 
   const saveName = async (e: FormEvent) => {
     e.preventDefault()
-    setSaving(true); setError('')
+    setSaving(true)
+    setError('')
     try {
       const { data } = await api.patch('/auth/me', { full_name: nameVal })
       setProfile(data)
       setSuccess('Имя обновлено')
       setTimeout(close, 1000)
-    } catch { setError('Ошибка при сохранении') }
-    finally { setSaving(false) }
+    } catch {
+      setError('Ошибка при сохранении')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const saveEmail = async (e: FormEvent) => {
     e.preventDefault()
-    setSaving(true); setError('')
+    setSaving(true)
+    setError('')
     try {
       const { data } = await api.patch('/auth/me', { email: emailVal })
       setProfile(data)
-      setSuccess('Email обновлён')
+      setSuccess('Email обновлен')
       setTimeout(close, 1000)
     } catch (err: any) {
       setError(err.response?.data?.detail ?? 'Ошибка при сохранении')
-    } finally { setSaving(false) }
+    } finally {
+      setSaving(false)
+    }
   }
 
   const savePassword = async (e: FormEvent) => {
     e.preventDefault()
-    if (newPass !== confPass) { setError('Пароли не совпадают'); return }
-    if (newPass.length < 6)   { setError('Минимум 6 символов'); return }
-    setSaving(true); setError('')
+    if (newPass !== confPass) {
+      setError('Пароли не совпадают')
+      return
+    }
+    if (newPass.length < 6) {
+      setError('Минимум 6 символов')
+      return
+    }
+    setSaving(true)
+    setError('')
     try {
       await api.post('/auth/me/password', { current_password: curPass, new_password: newPass })
-      setSuccess('Пароль изменён')
+      setSuccess('Пароль изменен')
       setTimeout(close, 1000)
     } catch (err: any) {
       setError(err.response?.data?.detail ?? 'Ошибка при смене пароля')
-    } finally { setSaving(false) }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loadingError) {
+    return <AdminLayout><div className="text-sm text-red-600">{loadingError}</div></AdminLayout>
   }
 
   if (!profile) {
     return <AdminLayout><div className="text-sm text-gray-400">Загрузка...</div></AdminLayout>
   }
 
-  const actions: {
-    id: ActivePanel
-    title: string
-    subtitle: string
-  }[] = [
+  const actions: { id: ActivePanel; title: string; subtitle: string }[] = [
     {
       id: 'name',
       title: 'Изменить имя',
@@ -119,7 +153,7 @@ export default function SettingsPage() {
     {
       id: 'password',
       title: 'Изменить пароль',
-      subtitle: 'Рекомендуем использовать надёжный пароль',
+      subtitle: 'Рекомендуем использовать надежный пароль',
     },
   ]
 
@@ -127,22 +161,18 @@ export default function SettingsPage() {
     <AdminLayout>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-gray-900">Настройки</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Управление учётной записью</p>
+        <p className="text-sm text-gray-400 mt-0.5">Управление учетной записью</p>
       </div>
 
       <div className="max-w-xl space-y-5">
-
-        {/* Popular actions */}
         <div className="bg-white rounded-2xl border overflow-hidden">
           <div className="px-5 pt-5 pb-3">
-            <h2 className="text-base font-bold text-gray-900">Популярные действия</h2>
+            <h2 className="text-base font-bold text-gray-900">Быстрые действия</h2>
           </div>
 
           {actions.map((action, i) => (
             <div key={action.id}>
               {i > 0 && <div className="mx-5 border-t" />}
-
-              {/* Row */}
               <button
                 onClick={() => active === action.id ? close() : open(action.id)}
                 className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 transition text-left"
@@ -157,12 +187,9 @@ export default function SettingsPage() {
                 }
               </button>
 
-              {/* Inline form */}
               {active === action.id && (
                 <div className="px-5 pb-5 bg-gray-50 border-t">
                   <div className="pt-4">
-
-                    {/* Name form */}
                     {action.id === 'name' && (
                       <form onSubmit={saveName} className="space-y-3">
                         <input
@@ -184,7 +211,6 @@ export default function SettingsPage() {
                       </form>
                     )}
 
-                    {/* Email form */}
                     {action.id === 'email' && (
                       <form onSubmit={saveEmail} className="space-y-3">
                         <input
@@ -207,7 +233,6 @@ export default function SettingsPage() {
                       </form>
                     )}
 
-                    {/* Password form */}
                     {action.id === 'password' && (
                       <form onSubmit={savePassword} className="space-y-3">
                         <input
@@ -225,7 +250,7 @@ export default function SettingsPage() {
                           value={newPass}
                           onChange={(e) => setNewPass(e.target.value)}
                           required
-                          placeholder="Новый пароль (мин. 6 символов)"
+                          placeholder="Новый пароль"
                           autoComplete="new-password"
                           className="w-full border rounded-xl px-4 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand/30 focus:border-brand"
                         />
@@ -248,7 +273,6 @@ export default function SettingsPage() {
                         </div>
                       </form>
                     )}
-
                   </div>
                 </div>
               )}
@@ -256,11 +280,10 @@ export default function SettingsPage() {
           ))}
         </div>
 
-        {/* Account info */}
         <div className="bg-white rounded-2xl border overflow-hidden">
           <div className="px-5 pt-5 pb-3">
             <h2 className="text-base font-bold text-gray-900">Аккаунт</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Информация об учётной записи администратора</p>
+            <p className="text-xs text-gray-400 mt-0.5">Информация об учетной записи администратора</p>
           </div>
           <div className="mx-5 border-t" />
           <div className="divide-y mx-0">
@@ -269,17 +292,20 @@ export default function SettingsPage() {
               <span className="text-sm font-mono text-gray-700">{profile.id}</span>
             </div>
             <div className="flex items-center justify-between px-5 py-3.5">
+              <span className="text-sm text-gray-500">Организация</span>
+              <span className="text-sm font-mono text-gray-700">{profile.organization_id ?? '-'}</span>
+            </div>
+            <div className="flex items-center justify-between px-5 py-3.5">
               <span className="text-sm text-gray-500">Email</span>
               <span className="text-sm text-gray-700">{profile.email}</span>
             </div>
             <div className="flex items-center justify-between px-5 py-3.5">
               <span className="text-sm text-gray-500">Роль</span>
-              <span className="text-xs font-semibold bg-brand/10 text-brand px-2.5 py-1 rounded-full">Администратор</span>
+              <span className="text-xs font-semibold bg-brand/10 text-brand px-2.5 py-1 rounded-full">{ROLE_LABELS[profile.role]}</span>
             </div>
           </div>
           <div className="h-2" />
         </div>
-
       </div>
     </AdminLayout>
   )

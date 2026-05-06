@@ -1,8 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useAuthStore } from './store/auth'
-import { useProjectStore } from './store/project'
+import { RequireAuth, RequireProject } from './components/admin/RouteGuards'
 
 import LoginPage from './pages/admin/LoginPage'
+import RegisterOrganizationPage from './pages/admin/RegisterOrganizationPage'
 import ProjectsPage from './pages/admin/ProjectsPage'
 import DashboardPage from './pages/admin/DashboardPage'
 import WebinarListPage from './pages/admin/WebinarListPage'
@@ -12,6 +12,7 @@ import AnalyticsPage from './pages/admin/AnalyticsPage'
 import BroadcastPage from './pages/admin/BroadcastPage'
 import SettingsPage from './pages/admin/SettingsPage'
 import ComingSoonPage from './pages/admin/ComingSoonPage'
+import StaffPage from './pages/admin/StaffPage'
 import CourseListPage from './pages/admin/CourseListPage'
 import CourseFormPage from './pages/admin/CourseFormPage'
 import CourseBuilderPage from './pages/admin/CourseBuilderPage'
@@ -21,27 +22,18 @@ import WatchPage from './pages/public/WatchPage'
 import CourseJoinPage from './pages/public/CourseJoinPage'
 import CourseLearnPage from './pages/public/CourseLearnPage'
 
-function RequireAuth({ children }: { children: React.ReactNode }) {
-  const token = useAuthStore((s) => s.token)
-  return token ? <>{children}</> : <Navigate to="/admin/login" replace />
-}
-
-function RequireProject({ children }: { children: React.ReactNode }) {
-  const projectId = useProjectStore((s) => s.currentProjectId)
-  return projectId ? <>{children}</> : <Navigate to="/admin/projects" replace />
-}
-
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
         {/* Auth */}
         <Route path="/admin/login" element={<LoginPage />} />
+        <Route path="/admin/register" element={<RegisterOrganizationPage />} />
 
         {/* Project selector */}
         <Route path="/admin/projects" element={<RequireAuth><ProjectsPage /></RequireAuth>} />
 
-        {/* Admin — requires both auth and a selected project */}
+        {/* Admin routes require auth and, for workspace pages, a selected project. */}
         <Route path="/admin" element={<RequireAuth><RequireProject><DashboardPage /></RequireProject></RequireAuth>} />
         <Route path="/admin/webinars" element={<RequireAuth><RequireProject><WebinarListPage /></RequireProject></RequireAuth>} />
         <Route path="/admin/webinars/new" element={<RequireAuth><RequireProject><WebinarFormPage /></RequireProject></RequireAuth>} />
@@ -56,7 +48,7 @@ export default function App() {
         <Route path="/admin/courses/:id/students" element={<RequireAuth><RequireProject><CourseStudentsPage /></RequireProject></RequireAuth>} />
         <Route path="/admin/settings"      element={<RequireAuth><SettingsPage /></RequireAuth>} />
         <Route path="/admin/billing"       element={<RequireAuth><RequireProject><ComingSoonPage /></RequireProject></RequireAuth>} />
-        <Route path="/admin/staff"         element={<RequireAuth><RequireProject><ComingSoonPage /></RequireProject></RequireAuth>} />
+        <Route path="/admin/staff"         element={<RequireAuth><RequireProject><StaffPage /></RequireProject></RequireAuth>} />
         <Route path="/admin/bonuses"       element={<RequireAuth><RequireProject><ComingSoonPage /></RequireProject></RequireAuth>} />
         <Route path="/admin/achievements"  element={<RequireAuth><RequireProject><ComingSoonPage /></RequireProject></RequireAuth>} />
         <Route path="/admin/coming-soon"   element={<RequireAuth><RequireProject><ComingSoonPage /></RequireProject></RequireAuth>} />

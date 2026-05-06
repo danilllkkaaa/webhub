@@ -5,7 +5,8 @@ import { webinarApi, Webinar } from '../../api/webinars'
 import { useAuthStore } from '../../store/auth'
 import {
   ArrowLeft, Users, Send, Radio, Square, Settings,
-  Lock, Unlock, MessageSquare, ShieldAlert,
+  Lock, Unlock, MessageSquare, ShieldAlert, Trash2, Ban,
+  ChevronLeft,
 } from 'lucide-react'
 
 declare global {
@@ -50,6 +51,8 @@ export default function BroadcastPage() {
   const [viewerCount, setViewerCount] = useState(0)
   const [chatLocked, setChatLocked] = useState(false)
   const [finishing, setFinishing] = useState(false)
+  const [showModeration, setShowModeration] = useState(false)
+  const [bannedAuthors, setBannedAuthors] = useState<Set<string>>(new Set())
 
   const playerDivRef = useRef<HTMLDivElement>(null)
   const playerRef    = useRef<any>(null)
@@ -96,15 +99,21 @@ export default function BroadcastPage() {
       const msg = JSON.parse(e.data)
       if (msg.type === 'chat_message') {
         setMessages((prev) => [...prev.slice(-299), msg as ChatMsg])
+      } else if (msg.type === 'message_deleted') {
+        setMessages((prev) => prev.filter((m) => m.id !== msg.id))
+      } else if (msg.type === 'user_banned') {
+        setBannedAuthors((prev) => new Set([...prev, msg.author]))
       }
     }
     return () => ws.close()
   }, [webinarId, token])
 
-  // Auto-scroll chat
+  // Auto-scroll chat (only in chat mode, not moderation)
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (!showModeration) {
+      chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+  }, [messages, showModeration])
 
   // Viewer count polling
   useEffect(() => {
@@ -137,6 +146,36 @@ export default function BroadcastPage() {
     setWebinar(updated)
     timerStart.current = new Date()
   }
+
+  const handleDeleteMessage = async (msgId: number | string) => {
+    try {
+      await api.delete(`/admin/webinars/${webinarId}/chat/messages/${msgId}`)
+      // optimistic: WS broadcast will also remove it
+      setMessages((prev) => prev.filter((m) => m.id !== msgId))
+    } catch {
+      // ignore
+    }
+  }
+
+  const handleBanUser = async (msgId: number | string) => {
+    try {
+      const { data } = await api.post(`/admin/webinars/${webinarId}/chat/ban/${msgId}`)
+      setBannedAuthors((prev) => new Set([...prev, data.author]))
+    } catch {
+      // ignore
+    }
+  }
+
+  // Unique participants derived from messages
+  const participants = Array.from(
+    messages.reduce((map, m) => {
+      if (!m.is_admin) {
+        const cur = map.get(m.author) ?? { count: 0, lastMsgId: m.id }
+        map.set(m.author, { count: cur.count + 1, lastMsgId: m.id })
+      }
+      return map
+    }, new Map<string, { count: number; lastMsgId: number | string }>())
+  ).map(([author, info]) => ({ author, ...info }))
 
   if (!webinar) {
     return (
@@ -255,72 +294,169 @@ export default function BroadcastPage() {
           )}
         </div>
 
-        {/* Chat panel */}
+        {/* Right panel: Chat or Moderation */}
         <div className="w-80 shrink-0 bg-gray-900 border-l border-gray-800 flex flex-col" style={{ height: 'calc(100vh - 88px)' }}>
-          {/* Chat header */}
-          <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <MessageSquare size={15} className="text-gray-400" />
-              <span className="text-sm font-semibold">Чат</span>
+
+          {/* Panel header */}
+          <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between shrink-0">
+            {showModeration ? (
+              <>
+                <div className="flex items-center gap-2">
+                  <ShieldAlert size={15} className="text-orange-400" />
+                  <span className="text-sm font-semibold">Модерация</span>
+                  {bannedAuthors.size > 0 && (
+                    <span className="text-xs bg-red-900/60 text-red-400 px-1.5 py-0.5 rounded-full">
+                      {bannedAuthors.size} забанено
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowModeration(false)}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-white border border-gray-700 rounded px-2 py-1 transition"
+                >
+                  <ChevronLeft size={12} /> Чат
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <MessageSquare size={15} className="text-gray-400" />
+                  <span className="text-sm font-semibold">Чат</span>
+                  {messages.length > 0 && (
+                    <span className="text-xs bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded-full">
+                      {messages.length}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowModeration(true)}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-orange-400 border border-gray-700 rounded px-2 py-1 transition"
+                >
+                  <ShieldAlert size={12} /> Модерация
+                </button>
+              </>
+            )}
+          </div>
+
+          {showModeration ? (
+            /* ── Moderation panel ── */
+            <div className="flex-1 overflow-y-auto text-sm">
+
+              {/* Participants list */}
+              {participants.length > 0 && (
+                <div>
+                  <p className="px-4 pt-3 pb-1 text-xs text-gray-500 uppercase tracking-wide font-medium">
+                    Участники ({participants.length})
+                  </p>
+                  {participants.map((p) => (
+                    <div key={p.author} className="flex items-center gap-3 px-4 py-2 hover:bg-gray-800/50 transition">
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm font-medium truncate ${bannedAuthors.has(p.author) ? 'text-red-400 line-through' : 'text-gray-200'}`}>
+                          {p.author}
+                        </p>
+                        <p className="text-xs text-gray-500">{p.count} {p.count === 1 ? 'сообщение' : 'сообщений'}</p>
+                      </div>
+                      {!bannedAuthors.has(p.author) && (
+                        <button
+                          onClick={() => handleBanUser(p.lastMsgId)}
+                          title="Заблокировать пользователя"
+                          className="p-1.5 rounded text-gray-500 hover:text-red-400 hover:bg-red-950/30 transition shrink-0"
+                        >
+                          <Ban size={13} />
+                        </button>
+                      )}
+                      {bannedAuthors.has(p.author) && (
+                        <span className="text-xs text-red-500 shrink-0">Забанен</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {participants.length === 0 && (
+                <p className="text-gray-600 text-xs text-center pt-8 px-4">
+                  Участники появятся, когда напишут в чат
+                </p>
+              )}
+
+              {/* Messages with delete buttons */}
               {messages.length > 0 && (
-                <span className="text-xs bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded-full">
-                  {messages.length}
-                </span>
+                <div className="mt-2">
+                  <p className="px-4 pt-3 pb-1 text-xs text-gray-500 uppercase tracking-wide font-medium">
+                    Все сообщения
+                  </p>
+                  <div className="space-y-1 pb-4">
+                    {messages.map((m) => (
+                      <div key={m.id} className="group flex items-start gap-2 px-4 py-1.5 hover:bg-gray-800/50 transition">
+                        <div className="flex-1 min-w-0">
+                          <span className={`text-xs font-semibold ${m.is_admin ? 'text-green-400' : bannedAuthors.has(m.author) ? 'text-red-400' : 'text-indigo-300'}`}>
+                            {m.author}
+                          </span>
+                          <p className="text-xs text-gray-400 leading-relaxed mt-0.5 break-words">{m.text}</p>
+                        </div>
+                        {!m.is_admin && (
+                          <button
+                            onClick={() => handleDeleteMessage(m.id)}
+                            title="Удалить сообщение"
+                            className="opacity-0 group-hover:opacity-100 p-1 rounded text-gray-600 hover:text-red-400 transition shrink-0 mt-0.5"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
-            <button
-              title="Модерация"
-              className="flex items-center gap-1 text-xs text-gray-500 hover:text-orange-400 border border-gray-700 rounded px-2 py-1"
-            >
-              <ShieldAlert size={12} /> Модерация
-            </button>
-          </div>
-
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 text-sm">
-            {messages.length === 0 && (
-              <p className="text-gray-600 text-xs text-center pt-8">Сообщений пока нет</p>
-            )}
-            {messages.map((m) => (
-              <div key={m.id} className="group">
-                <div className="flex items-baseline gap-2">
-                  <span className={`font-semibold text-xs shrink-0 ${m.is_admin ? 'text-green-400' : 'text-indigo-300'}`}>
-                    {m.author}
-                  </span>
-                  <span className="text-gray-600 text-xs shrink-0">
-                    {new Date(m.ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
-                <p className={`text-sm mt-0.5 leading-relaxed ${m.is_admin ? 'text-green-100' : 'text-gray-300'}`}>
-                  {m.text}
-                </p>
+          ) : (
+            /* ── Chat panel ── */
+            <>
+              <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 text-sm">
+                {messages.length === 0 && (
+                  <p className="text-gray-600 text-xs text-center pt-8">Сообщений пока нет</p>
+                )}
+                {messages.map((m) => (
+                  <div key={m.id} className="group">
+                    <div className="flex items-baseline gap-2">
+                      <span className={`font-semibold text-xs shrink-0 ${m.is_admin ? 'text-green-400' : 'text-indigo-300'}`}>
+                        {m.author}
+                      </span>
+                      <span className="text-gray-600 text-xs shrink-0">
+                        {new Date(m.ts).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                    <p className={`text-sm mt-0.5 leading-relaxed ${m.is_admin ? 'text-green-100' : 'text-gray-300'}`}>
+                      {m.text}
+                    </p>
+                  </div>
+                ))}
+                <div ref={chatBottomRef} />
               </div>
-            ))}
-            <div ref={chatBottomRef} />
-          </div>
 
-          {/* Input */}
-          <div className="px-3 py-3 border-t border-gray-800 space-y-2">
-            <p className="text-xs text-gray-600">Кому: всем</p>
-            <div className="flex gap-2">
-              <input
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && !chatLocked && sendMessage()}
-                placeholder={chatLocked ? 'Чат заблокирован' : 'Введите сообщение'}
-                disabled={chatLocked}
-                maxLength={1000}
-                className="flex-1 bg-gray-800 text-white text-sm rounded-lg px-3 py-2 outline-none placeholder-gray-600 disabled:opacity-50 focus:ring-1 focus:ring-brand"
-              />
-              <button
-                onClick={sendMessage}
-                disabled={chatLocked || !input.trim()}
-                className="bg-brand hover:bg-brand-dark text-white rounded-lg px-3 py-2 text-xs font-semibold transition disabled:opacity-40 shrink-0"
-              >
-                <Send size={14} />
-              </button>
-            </div>
-          </div>
+              <div className="px-3 py-3 border-t border-gray-800 space-y-2 shrink-0">
+                <p className="text-xs text-gray-600">Кому: всем</p>
+                <div className="flex gap-2">
+                  <input
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && !chatLocked && sendMessage()}
+                    placeholder={chatLocked ? 'Чат заблокирован' : 'Введите сообщение'}
+                    disabled={chatLocked}
+                    maxLength={1000}
+                    className="flex-1 bg-gray-800 text-white text-sm rounded-lg px-3 py-2 outline-none placeholder-gray-600 disabled:opacity-50 focus:ring-1 focus:ring-brand"
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={chatLocked || !input.trim()}
+                    className="bg-brand hover:bg-brand-dark text-white rounded-lg px-3 py-2 text-xs font-semibold transition disabled:opacity-40 shrink-0"
+                  >
+                    <Send size={14} />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

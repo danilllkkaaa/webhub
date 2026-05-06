@@ -18,6 +18,12 @@ class LessonType(str, enum.Enum):
     text = "text"
 
 
+class CourseStudentStatus(str, enum.Enum):
+    pending = "pending"
+    approved = "approved"
+    rejected = "rejected"
+
+
 class Course(Base):
     __tablename__ = "courses"
 
@@ -54,6 +60,7 @@ class CourseLesson(Base):
     lesson_type: Mapped[LessonType] = mapped_column(SAEnum(LessonType), default=LessonType.video)
     video_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     video_id: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    bunny_video_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     position: Mapped[int] = mapped_column(Integer, default=0)
     is_published: Mapped[bool] = mapped_column(Boolean, default=True)
@@ -71,6 +78,7 @@ class CourseStudent(Base):
     phone: Mapped[str] = mapped_column(String(50))
     email: Mapped[str] = mapped_column(String(255))
     telegram: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    status: Mapped[CourseStudentStatus] = mapped_column(SAEnum(CourseStudentStatus), default=CourseStudentStatus.pending, server_default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     last_seen_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
 

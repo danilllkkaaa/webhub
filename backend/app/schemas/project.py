@@ -14,7 +14,10 @@ class ProjectUpdate(BaseModel):
 
 class ProjectOut(BaseModel):
     id: int
+    organization_id: int
     name: str
     color: str
     webinar_count: int
+    access_type: str = "owner"
+    member_role: str | None = None
     created_at: datetime

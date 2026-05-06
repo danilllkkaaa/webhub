@@ -3,9 +3,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 
 from app.database import get_db
-from app.models.user import User
+from app.models.organization import Organization
+from app.models.project import Project
+from app.models.user import User, UserRole
 from app.schemas.auth import (
-    LoginRequest, TokenResponse, UserOut,
+    LoginRequest, OrganizationRegisterRequest, TokenResponse, UserOut,
     UpdateProfileRequest, ChangePasswordRequest,
 )
 from app.core.security import verify_password, hash_password, create_access_token
@@ -20,6 +22,41 @@ async def login(data: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = result.scalar_one_or_none()
     if not user or not verify_password(data.password, user.hashed_password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
+    token = create_access_token({"sub": str(user.id)})
+    return TokenResponse(access_token=token)
+
+
+@router.post("/register-organization", response_model=TokenResponse, status_code=201)
+async def register_organization(data: OrganizationRegisterRequest, db: AsyncSession = Depends(get_db)):
+    email = str(data.email).lower()
+    existing = await db.execute(select(User).where(User.email == email))
+    if existing.scalar_one_or_none():
+        raise HTTPException(status_code=400, detail="Пользователь с таким email уже существует")
+
+    organization = Organization(name=data.organization_name.strip())
+    db.add(organization)
+    await db.flush()
+
+    user = User(
+        organization_id=organization.id,
+        email=email,
+        hashed_password=hash_password(data.password),
+        full_name=data.full_name.strip(),
+        role=UserRole.owner,
+        is_active=True,
+    )
+    db.add(user)
+    await db.flush()
+
+    project = Project(
+        organization_id=organization.id,
+        owner_id=user.id,
+        name=data.project_name.strip(),
+        color="#2D9A27",
+    )
+    db.add(project)
+    await db.commit()
+
     token = create_access_token({"sub": str(user.id)})
     return TokenResponse(access_token=token)
 

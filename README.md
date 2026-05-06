@@ -15,14 +15,31 @@ docker compose up -d --build
 - Admin: http://localhost/admin
 - API docs: http://localhost/api/docs
 
-## Данные администратора
+## Администратор
 
 Локальные значения берутся из `.env`.
 
-- Email: `admin@example.com`
-- Password: значение `ADMIN_PASSWORD` из `.env`
+- Email: `ADMIN_EMAIL`
+- Password: `ADMIN_PASSWORD`
 
 Перед публикацией поменяйте `SECRET_KEY` и `ADMIN_PASSWORD` в `.env`.
+
+## Миграции базы
+
+Схема базы управляется Alembic. В Docker миграции применяются автоматически перед стартом backend.
+
+Ручной запуск внутри backend-контейнера:
+
+```bash
+docker compose exec backend alembic upgrade head
+```
+
+Создание новой миграции после изменения моделей:
+
+```bash
+docker compose exec backend alembic revision --autogenerate -m "describe change"
+docker compose exec backend alembic upgrade head
+```
 
 ## Стек
 
@@ -41,7 +58,7 @@ docker compose up -d --build
 - Страница просмотра с YouTube player.
 - Блокировка кликов по YouTube iframe для зрителя.
 - Live chat через WebSocket.
-- Broadcast room для админа.
+- Broadcast room для администратора.
 - Таймлайн событий для автовебинаров.
 - Офферы, баннеры и редиректы.
 - Аналитика и Excel-экспорт участников.
@@ -49,11 +66,16 @@ docker compose up -d --build
 
 ## Разработка без Docker
 
+Backend:
+
 ```bash
 cd backend
 pip install -r requirements.txt
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
+
+Frontend:
 
 ```bash
 cd frontend

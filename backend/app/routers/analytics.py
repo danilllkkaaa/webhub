@@ -1,16 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, distinct
 
 from app.database import get_db
 from app.models.user import User
-from app.models.webinar import Webinar
 from app.models.registration import Registration
 from app.models.viewer_session import ViewerSession
 from app.models.chat_message import ChatMessage
 from app.models.offer_click import OfferClick
 from app.schemas.analytics import WebinarAnalytics
 from app.core.dependencies import get_current_user
+from app.services.access import get_webinar_for_user
 
 router = APIRouter(prefix="/admin/analytics", tags=["analytics"])
 
@@ -19,12 +19,9 @@ router = APIRouter(prefix="/admin/analytics", tags=["analytics"])
 async def get_analytics(
     webinar_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    # Verify webinar exists
-    wb = await db.execute(select(Webinar).where(Webinar.id == webinar_id))
-    if not wb.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Webinar not found")
+    await get_webinar_for_user(webinar_id, current_user, db, permission="webinar.analytics")
 
     # Registrations count
     total_reg = await db.execute(

@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     admin_email: str = "admin@example.com"
     admin_password: str = "changeme123"
     cors_origins: str = "http://localhost"
+    bunny_api_key: str = ""
+    bunny_library_id: str = ""
+    bunny_cdn_hostname: str = ""
+    bunny_security_key: str = ""
 
     @property
     def cors_origin_list(self) -> list[str]:

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel, EmailStr
 
-from app.models.course import CourseStatus, LessonType
+from app.models.course import CourseStatus, LessonType, CourseStudentStatus
 
 
 class CourseCreate(BaseModel):
@@ -68,6 +68,7 @@ class LessonCreate(BaseModel):
     title: str
     lesson_type: LessonType = LessonType.video
     video_url: Optional[str] = None
+    bunny_video_id: Optional[str] = None
     content: Optional[str] = None
     position: int = 0
     is_published: bool = True
@@ -77,6 +78,7 @@ class LessonUpdate(BaseModel):
     title: Optional[str] = None
     lesson_type: Optional[LessonType] = None
     video_url: Optional[str] = None
+    bunny_video_id: Optional[str] = None
     content: Optional[str] = None
     position: Optional[int] = None
     is_published: Optional[bool] = None
@@ -89,6 +91,7 @@ class LessonOut(BaseModel):
     lesson_type: LessonType
     video_url: Optional[str]
     video_id: Optional[str]
+    bunny_video_id: Optional[str]
     content: Optional[str]
     position: int
     is_published: bool
@@ -119,6 +122,7 @@ class CourseStudentOut(BaseModel):
     phone: str
     email: str
     telegram: Optional[str]
+    status: CourseStudentStatus = CourseStudentStatus.pending
     progress_percent: float = 0
     completed_lessons: int = 0
     total_lessons: int = 0

@@ -2,9 +2,12 @@ import { api } from './client'
 
 export interface Project {
   id: number
+  organization_id: number
   name: string
   color: string
   webinar_count: number
+  access_type: 'owner' | 'shared'
+  member_role: string | null
   created_at: string
 }
 

@@ -35,6 +35,8 @@ class WebinarUpdate(BaseModel):
 
 class WebinarOut(BaseModel):
     id: int
+    organization_id: Optional[int]
+    project_id: Optional[int]
     slug: str
     invite_token: Optional[str]
     title: str

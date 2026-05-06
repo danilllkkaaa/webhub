@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -16,6 +16,7 @@ from app.schemas.registration import InviteRegistrationCreate, RegistrationOut
 from app.schemas.webinar import WebinarOut
 from app.core.security import generate_viewer_token
 from app.core.dependencies import get_current_user
+from app.services.access import get_webinar_for_user
 
 router = APIRouter(tags=["registrations"])
 
@@ -64,8 +65,9 @@ async def register_by_slug_disabled(slug: str):
 async def list_registrations(
     webinar_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    await get_webinar_for_user(webinar_id, current_user, db, permission="webinar.export")
     result = await db.execute(
         select(Registration).where(Registration.webinar_id == webinar_id).order_by(Registration.created_at.desc())
     )
@@ -76,8 +78,9 @@ async def list_registrations(
 async def export_registrations(
     webinar_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
+    await get_webinar_for_user(webinar_id, current_user, db, permission="webinar.export")
     result = await db.execute(
         select(Registration).where(Registration.webinar_id == webinar_id).order_by(Registration.created_at)
     )
@@ -106,12 +109,9 @@ async def export_registrations(
 async def export_registrations_xlsx(
     webinar_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
-    webinar_result = await db.execute(select(Webinar).where(Webinar.id == webinar_id))
-    webinar = webinar_result.scalar_one_or_none()
-    if not webinar:
-        raise HTTPException(status_code=404, detail="Webinar not found")
+    await get_webinar_for_user(webinar_id, current_user, db, permission="webinar.export")
 
     result = await db.execute(
         select(Registration).where(Registration.webinar_id == webinar_id).order_by(Registration.created_at)

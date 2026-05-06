@@ -23,6 +23,7 @@ class Webinar(Base):
     __tablename__ = "webinars"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    organization_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     slug: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     invite_token: Mapped[Optional[str]] = mapped_column(String(64), unique=True, index=True, nullable=True)
     title: Mapped[str] = mapped_column(String(255))

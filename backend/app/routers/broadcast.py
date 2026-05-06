@@ -46,6 +46,53 @@ async def viewer_count(
     return {"count": total.scalar() or 0}
 
 
+@router.delete("/admin/webinars/{webinar_id}/chat/messages/{message_id}")
+async def delete_chat_message(
+    webinar_id: int,
+    message_id: int,
+    db: AsyncSession = Depends(get_db),
+    token: str = Query(...),
+):
+    if not await _get_admin_from_token(token):
+        raise HTTPException(status_code=403)
+
+    await db.execute(
+        select(ChatMessage).where(ChatMessage.id == message_id, ChatMessage.webinar_id == webinar_id)
+    )
+    # Simple delete
+    from sqlalchemy import delete
+    await db.execute(delete(ChatMessage).where(ChatMessage.id == message_id))
+    await db.commit()
+
+    await manager.broadcast(webinar_id, {"type": "message_deleted", "id": message_id})
+    return {"ok": True}
+
+
+@router.post("/admin/webinars/{webinar_id}/chat/ban/{message_id}")
+async def ban_user_by_message(
+    webinar_id: int,
+    message_id: int,
+    db: AsyncSession = Depends(get_db),
+    token: str = Query(...),
+):
+    if not await _get_admin_from_token(token):
+        raise HTTPException(status_code=403)
+
+    result = await db.execute(select(ChatMessage).where(ChatMessage.id == message_id))
+    msg = result.scalar_one_or_none()
+    if not msg or not msg.registration_id:
+        raise HTTPException(status_code=404, detail="Message or user not found")
+
+    await manager.ban(webinar_id, msg.registration_id)
+    
+    # Optional: delete all messages from this user
+    # from sqlalchemy import delete
+    # await db.execute(delete(ChatMessage).where(ChatMessage.registration_id == msg.registration_id))
+    # await db.commit()
+
+    return {"ok": True, "author": msg.author_name}
+
+
 @router.websocket("/ws/admin-chat/{webinar_id}")
 async def admin_chat_ws(webinar_id: int, ws: WebSocket, token: str = Query(...)):
     user_id = await _get_admin_from_token(token)
@@ -77,7 +124,7 @@ async def admin_chat_ws(webinar_id: int, ws: WebSocket, token: str = Query(...))
                 "author": m.author_name,
                 "text": m.text,
                 "ts": m.created_at.isoformat(),
-                "is_admin": False,
+                "is_admin": m.registration_id is None,
             })
 
     try:
@@ -101,7 +148,7 @@ async def admin_chat_ws(webinar_id: int, ws: WebSocket, token: str = Query(...))
                 msg = ChatMessage(
                     webinar_id=webinar_id,
                     registration_id=None,
-                    author_name="Администратор",
+                    author_name="Модератор",
                     text=text,
                 )
                 db.add(msg)
