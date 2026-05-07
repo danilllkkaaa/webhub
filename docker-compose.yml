@@ -66,6 +66,13 @@ services:
       frontend:
         condition: service_completed_successfully
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate --url http://nginx:80
+    restart: unless-stopped
+    depends_on:
+      - nginx
+
 volumes:
   postgres_data:
   frontend_dist:
