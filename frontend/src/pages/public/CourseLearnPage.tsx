@@ -1,404 +1,398 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
-import { CourseLearn, CourseLesson, courseApi } from '../../api/courses'
-import { CheckCircle, Circle, Maximize, Minimize, Pause, Play, PlayCircle, Volume1, Volume2, VolumeX } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { Award, CheckCircle2, ChevronRight, GraduationCap, HelpCircle, LayoutDashboard, Lock, Menu, PlayCircle, X } from 'lucide-react'
+import { courseApi, CourseLearn, CourseLesson, Quiz } from '../../api/courses'
 import BunnyPlayer from '../../components/BunnyPlayer'
+import { sanitizeHtml } from '../../utils/sanitize'
 
-declare global {
-  interface Window { YT: any; onYouTubeIframeAPIReady: () => void }
-}
+export default function CourseLearnPage() {
+  const { slug } = useParams<{ slug: string }>()
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
+  const token = searchParams.get('token')
 
-function fmt(s: number) {
-  if (!s || isNaN(s)) return '0:00'
-  return `${Math.floor(s / 60)}:${Math.floor(s % 60).toString().padStart(2, '0')}`
-}
+  const [data, setData] = useState<CourseLearn | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [currentLesson, setCurrentLesson] = useState<CourseLesson | null>(null)
+  const [currentQuiz, setCurrentQuiz] = useState<Quiz | null>(null)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [courseCompleted, setCourseCompleted] = useState(false)
 
-function VideoLesson({ lesson, onEnded }: { lesson: CourseLesson; onEnded?: () => void }) {
-  // Bunny Stream player — use when bunny_video_id is set
-  if (lesson.bunny_video_id) {
-    return <BunnyPlayer videoId={lesson.bunny_video_id} onEnded={onEnded} autoplay={false} />
+  const load = async () => {
+    if (!slug || !token) return
+    try {
+      const response = await courseApi.learn(slug, token)
+      setData(response)
+      if (!currentLesson && !currentQuiz && !courseCompleted && response.lessons.length > 0) {
+        const firstIncomplete = response.lessons.find((lesson) => !response.completed_lesson_ids.includes(lesson.id))
+        setCurrentLesson(firstIncomplete || response.lessons[0])
+      }
+    } catch {
+      navigate('/student/dashboard')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const containerRef = useRef<HTMLDivElement>(null)
-  const playerDivRef = useRef<HTMLDivElement>(null)
-  const playerRef = useRef<any>(null)
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const [ready, setReady] = useState(false)
-  const [playing, setPlaying] = useState(false)
-  const [buffering, setBuffering] = useState(false)
-  const [currentTime, setCurrentTime] = useState(0)
-  const [duration, setDuration] = useState(0)
-  const [buffered, setBuffered] = useState(0)
-  const [volume, setVolume] = useState(80)
-  const [muted, setMuted] = useState(false)
-  const [fullscreen, setFullscreen] = useState(false)
-  const [ctrlVisible, setCtrlVisible] = useState(true)
-
-  // refs to avoid stale closures in event listeners
-  const playingRef = useRef(false)
-  const mutedRef = useRef(false)
-  const volumeRef = useRef(80)
-  const durationRef = useRef(0)
-  useEffect(() => { playingRef.current = playing }, [playing])
-  useEffect(() => { mutedRef.current = muted }, [muted])
-  useEffect(() => { volumeRef.current = volume }, [volume])
-  useEffect(() => { durationRef.current = duration }, [duration])
-
   useEffect(() => {
-    if (!lesson.video_id) return
-    const init = () => {
-      if (!playerDivRef.current) return
-      playerRef.current = new window.YT.Player(playerDivRef.current, {
-        videoId: lesson.video_id,
-        playerVars: { autoplay: 0, controls: 0, disablekb: 1, fs: 0, rel: 0, playsinline: 1, iv_load_policy: 3, modestbranding: 1, origin: window.location.origin },
-        events: {
-          onReady: () => {
-            setReady(true)
-            setDuration(playerRef.current.getDuration() || 0)
-            playerRef.current.setVolume(80)
-            // Pin the iframe at z-index 0 so our overlays (z-10..z-30) are always above it
-            const iframe = playerRef.current.getIframe?.()
-            if (iframe) {
-              Object.assign(iframe.style, {
-                position: 'absolute', top: '0', left: '0',
-                width: '100%', height: '100%', zIndex: '0',
-              })
-            }
-          },
-          onStateChange: ({ data }: { data: number }) => {
-            if (data === 1) { setPlaying(true); setBuffering(false) }
-            else if (data === 2) setPlaying(false)
-            else if (data === 0) { setPlaying(false); setCurrentTime(0) }
-            else if (data === 3) setBuffering(true)
-          },
-        },
-      })
+    if (!slug || !token) {
+      navigate('/student/dashboard')
+      return
     }
-    if (window.YT?.Player) init()
-    else {
-      const s = document.createElement('script')
-      s.src = 'https://www.youtube.com/iframe_api'
-      document.head.appendChild(s)
-      window.onYouTubeIframeAPIReady = init
-    }
-    return () => {
-      playerRef.current?.destroy?.()
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-  }, [lesson.id, lesson.video_id])
+    load()
+  }, [slug, token])
 
-  // progress polling
-  useEffect(() => {
-    if (playing) {
-      intervalRef.current = setInterval(() => {
-        if (!playerRef.current) return
-        setCurrentTime(playerRef.current.getCurrentTime() || 0)
-        setBuffered(playerRef.current.getVideoLoadedFraction() || 0)
-        const d = playerRef.current.getDuration() || 0
-        if (d) setDuration(d)
-      }, 250)
+  const nextModuleWithSteps = (moduleIndex: number, source: CourseLearn) =>
+    source.modules.slice(moduleIndex + 1).find((module) => {
+      const hasLessons = source.lessons.some((lesson) => lesson.module_id === module.id)
+      return hasLessons || Boolean(module.quiz)
+    })
+
+  const isFinalLesson = () => {
+    if (!data || !currentLesson) return false
+    const moduleIndex = data.modules.findIndex((module) => module.id === currentLesson.module_id)
+    const moduleLessons = data.lessons.filter((lesson) => lesson.module_id === currentLesson.module_id)
+    const lessonIndex = moduleLessons.findIndex((lesson) => lesson.id === currentLesson.id)
+    return lessonIndex === moduleLessons.length - 1 && !data.modules[moduleIndex]?.quiz && !nextModuleWithSteps(moduleIndex, data)
+  }
+
+  const isFinalQuiz = (quiz: Quiz) => {
+    if (!data) return false
+    const moduleIndex = data.modules.findIndex((module) => module.quiz?.id === quiz.id)
+    return moduleIndex !== -1 && !nextModuleWithSteps(moduleIndex, data)
+  }
+
+  const completeAndNext = async () => {
+    if (!currentLesson || !token || !data) return
+    await courseApi.completeLesson(currentLesson.id, token)
+
+    const moduleIndex = data.modules.findIndex((module) => module.id === currentLesson.module_id)
+    const moduleLessons = data.lessons.filter((lesson) => lesson.module_id === currentLesson.module_id)
+    const lessonIndex = moduleLessons.findIndex((lesson) => lesson.id === currentLesson.id)
+
+    if (lessonIndex < moduleLessons.length - 1) {
+      setCurrentLesson(moduleLessons[lessonIndex + 1])
+      setCurrentQuiz(null)
+    } else if (data.modules[moduleIndex]?.quiz) {
+      setCurrentLesson(null)
+      setCurrentQuiz(data.modules[moduleIndex].quiz)
     } else {
-      if (intervalRef.current) clearInterval(intervalRef.current)
-    }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current) }
-  }, [playing])
-
-  // fullscreen listener
-  useEffect(() => {
-    const h = () => setFullscreen(!!document.fullscreenElement)
-    document.addEventListener('fullscreenchange', h)
-    return () => document.removeEventListener('fullscreenchange', h)
-  }, [])
-
-  // keyboard shortcuts
-  useEffect(() => {
-    const h = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return
-      if (e.code === 'Space') {
-        e.preventDefault()
-        playingRef.current ? playerRef.current?.pauseVideo() : playerRef.current?.playVideo()
-      }
-      if (e.code === 'ArrowRight') {
-        e.preventDefault()
-        const t = Math.min((playerRef.current?.getCurrentTime() || 0) + 10, durationRef.current)
-        playerRef.current?.seekTo(t, true); setCurrentTime(t)
-      }
-      if (e.code === 'ArrowLeft') {
-        e.preventDefault()
-        const t = Math.max((playerRef.current?.getCurrentTime() || 0) - 10, 0)
-        playerRef.current?.seekTo(t, true); setCurrentTime(t)
-      }
-      if (e.code === 'KeyF') document.fullscreenElement ? document.exitFullscreen() : containerRef.current?.requestFullscreen()
-      if (e.code === 'KeyM') {
-        if (mutedRef.current) { playerRef.current?.unMute(); setMuted(false); if (!volumeRef.current) { playerRef.current?.setVolume(50); setVolume(50) } }
-        else { playerRef.current?.mute(); setMuted(true) }
+      const nextModule = nextModuleWithSteps(moduleIndex, data)
+      if (nextModule) {
+        const nextLessons = data.lessons.filter((lesson) => lesson.module_id === nextModule.id)
+        setCurrentLesson(nextLessons[0] ?? null)
+        setCurrentQuiz(nextLessons.length > 0 ? null : nextModule.quiz)
+      } else {
+        setCurrentLesson(null)
+        setCurrentQuiz(null)
+        setCourseCompleted(true)
       }
     }
-    window.addEventListener('keydown', h)
-    return () => window.removeEventListener('keydown', h)
-  }, [])
 
-  const scheduleHide = () => {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current)
-    if (playingRef.current) hideTimerRef.current = setTimeout(() => setCtrlVisible(false), 3000)
-  }
-  const revealControls = () => { setCtrlVisible(true); scheduleHide() }
-
-  const togglePlay = () => playing ? playerRef.current?.pauseVideo() : playerRef.current?.playVideo()
-  const toggleFullscreen = () => document.fullscreenElement ? document.exitFullscreen() : containerRef.current?.requestFullscreen()
-  const toggleMute = () => {
-    if (muted) { playerRef.current?.unMute(); setMuted(false); if (!volume) { playerRef.current?.setVolume(50); setVolume(50) } }
-    else { playerRef.current?.mute(); setMuted(true) }
+    await load()
   }
 
-  const handleSeek = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!duration) return
-    const rect = e.currentTarget.getBoundingClientRect()
-    const t = ((e.clientX - rect.left) / rect.width) * duration
-    playerRef.current?.seekTo(t, true); setCurrentTime(t)
+  const isLessonLocked = (lesson: CourseLesson) => {
+    if (!data?.course.sequential_access) return false
+    const index = data.lessons.findIndex((item) => item.id === lesson.id)
+    if (index <= 0) return false
+    return !data.completed_lesson_ids.includes(data.lessons[index - 1].id)
   }
 
-  const handleVolume = (val: number) => {
-    setVolume(val); playerRef.current?.setVolume(val)
-    if (val === 0) { playerRef.current?.mute(); setMuted(true) }
-    else { playerRef.current?.unMute(); setMuted(false) }
+  const isQuizLocked = (moduleId: number) => {
+    if (!data?.course.sequential_access) return false
+    const moduleLessons = data.lessons.filter((lesson) => lesson.module_id === moduleId)
+    if (moduleLessons.length === 0) return false
+    return !data.completed_lesson_ids.includes(moduleLessons[moduleLessons.length - 1].id)
   }
 
-  const skip = (delta: number) => {
-    const t = Math.max(0, Math.min((playerRef.current?.getCurrentTime() || 0) + delta, duration))
-    playerRef.current?.seekTo(t, true); setCurrentTime(t)
-  }
-
-  const progress = duration > 0 ? (currentTime / duration) * 100 : 0
-  const VolumeIcon = muted || volume === 0 ? VolumeX : volume < 50 ? Volume1 : Volume2
-
-  if (!lesson.video_id) return <div className="bg-gray-900 text-gray-400 rounded-xl p-10 text-center">Видео не добавлено</div>
+  if (loading) return <div className="flex min-h-screen items-center justify-center text-gray-400">Подготовка учебного места...</div>
+  if (!data) return null
 
   return (
-    <div
-      ref={containerRef}
-      className="relative bg-black rounded-xl overflow-hidden select-none"
-      style={{ paddingBottom: '56.25%' }}
-      onMouseMove={revealControls}
-      onMouseEnter={revealControls}
-      onMouseLeave={() => { if (playing) setCtrlVisible(false) }}
-    >
-      {/* YouTube iframe — pointer-events-none so we control everything */}
-      <div ref={playerDivRef} className="absolute inset-0 w-full h-full pointer-events-none" />
-
-      {/* Click overlay — play/pause on click */}
-      <div
-        className="absolute inset-0 z-10 cursor-pointer"
-        onClick={togglePlay}
-        onContextMenu={e => e.preventDefault()}
-      />
-
-      {/* Initial loading */}
-      {!ready && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center bg-black">
-          <div className="w-11 h-11 border-[3px] border-brand border-t-transparent rounded-full animate-spin" />
-        </div>
+    <div className="flex h-screen overflow-hidden bg-white">
+      {!courseCompleted && (
+        <button
+          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+          className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-brand text-white shadow-2xl lg:hidden"
+        >
+          {isSidebarOpen ? <X /> : <Menu />}
+        </button>
       )}
 
-      {/* Buffering */}
-      {buffering && ready && (
-        <div className="absolute inset-0 z-20 flex items-center justify-center pointer-events-none">
-          <div className="w-12 h-12 border-[3px] border-white/50 border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
-
-      {/* Pause overlay — solid cover so YouTube's end/pause screen never shows through */}
-      {!playing && ready && !buffering && (
-        <div className="absolute inset-0 z-20 bg-black flex items-center justify-center pointer-events-none">
-          {/* Thumbnail as soft background — hidden on error (e.g. unlisted video) */}
-          <img
-            src={`https://img.youtube.com/vi/${lesson.video_id}/maxresdefault.jpg`}
-            alt=""
-            className="absolute inset-0 w-full h-full object-cover opacity-40"
-            onError={(e) => { e.currentTarget.style.display = 'none' }}
-          />
-          <div className="relative w-[72px] h-[72px] bg-white/10 backdrop-blur-md border border-white/20 rounded-full flex items-center justify-center">
-            <Play className="w-8 h-8 text-white ml-1" fill="currentColor" />
-          </div>
-        </div>
-      )}
-
-      {/* Controls */}
-      <div
-        className={`absolute bottom-0 left-0 right-0 z-30 transition-all duration-300 ${ctrlVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
-        onClick={e => e.stopPropagation()}
-        onMouseMove={e => e.stopPropagation()}
-      >
-        {/* Gradient + controls */}
-        <div className="bg-gradient-to-t from-black/95 via-black/60 to-transparent px-4 pt-10 pb-3">
-
-          {/* ── Progress bar ── */}
-          <div
-            className="relative w-full mb-3 cursor-pointer group/bar flex items-center"
-            style={{ height: 20 }}
-            onClick={handleSeek}
-          >
-            <div className="absolute left-0 right-0 h-1 group-hover/bar:h-[5px] transition-all duration-150 rounded-full bg-white/20">
-              {/* buffered */}
-              <div className="absolute inset-y-0 left-0 bg-white/25 rounded-full" style={{ width: `${buffered * 100}%` }} />
-              {/* played */}
-              <div className="absolute inset-y-0 left-0 bg-brand rounded-full transition-none" style={{ width: `${progress}%` }}>
-                {/* thumb */}
-                <span className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-[13px] h-[13px] bg-white rounded-full shadow-md scale-0 group-hover/bar:scale-100 transition-transform" />
+      {!courseCompleted && (
+        <aside className={`${isSidebarOpen ? 'w-80' : 'w-0'} fixed inset-y-0 left-0 z-40 flex flex-col border-r bg-gray-50 transition-all duration-300 lg:static`}>
+          <div className="flex shrink-0 items-center justify-between border-b bg-white p-6">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-white">
+                <GraduationCap size={18} />
               </div>
+              <h2 className="truncate text-sm font-black tracking-tight">{data.course.title}</h2>
             </div>
+            <button onClick={() => navigate('/student/dashboard')} title="В кабинет" className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100">
+              <LayoutDashboard size={18} />
+            </button>
           </div>
 
-          {/* ── Controls row ── */}
-          <div className="flex items-center gap-1">
+          <div className="flex-1 overflow-y-auto">
+            {data.modules.map((module, moduleIndex) => (
+              <div key={module.id} className="border-b border-gray-100">
+                <div className="flex items-center gap-3 bg-gray-100/50 px-6 py-4">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-gray-400">Модуль {moduleIndex + 1}</span>
+                  <h3 className="truncate text-xs font-bold text-gray-900">{module.title}</h3>
+                </div>
+                <div className="space-y-1 p-2">
+                  {data.lessons.filter((lesson) => lesson.module_id === module.id).map((lesson) => {
+                    const locked = isLessonLocked(lesson)
+                    const completed = data.completed_lesson_ids.includes(lesson.id)
+                    const active = currentLesson?.id === lesson.id
 
-            {/* Play / Pause */}
-            <button onClick={togglePlay} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white">
-              {playing ? <Pause className="w-[18px] h-[18px]" fill="currentColor" /> : <Play className="w-[18px] h-[18px]" fill="currentColor" />}
-            </button>
+                    return (
+                      <button
+                        key={lesson.id}
+                        disabled={locked}
+                        onClick={() => {
+                          setCurrentQuiz(null)
+                          setCurrentLesson(lesson)
+                          if (window.innerWidth < 1024) setIsSidebarOpen(false)
+                        }}
+                        className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-all ${active ? 'bg-brand text-white shadow-lg shadow-brand/20' : 'hover:bg-white'} ${locked ? 'cursor-not-allowed opacity-40 grayscale' : ''}`}
+                      >
+                        <div className={`shrink-0 ${active ? 'text-white' : completed ? 'text-green-500' : 'text-gray-300'}`}>
+                          {completed ? <CheckCircle2 size={18} /> : locked ? <Lock size={18} /> : <PlayCircle size={18} />}
+                        </div>
+                        <span className={`truncate text-xs font-bold ${active ? 'text-white' : 'text-gray-700'}`}>{lesson.title}</span>
+                      </button>
+                    )
+                  })}
 
-            {/* Skip −10 */}
-            <button onClick={() => skip(-10)} title="-10 сек (←)" className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/70 hover:text-white">
-              <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="currentColor">
-                <path d="M12 5V2L7 7l5 5V9c3.31 0 6 2.69 6 6s-2.69 6-6 6-6-2.69-6-6H4c0 4.42 3.58 8 8 8s8-3.58 8-8-3.58-8-8-8z"/>
-                <text x="12" y="16.5" fontSize="5.5" textAnchor="middle" fontWeight="700" fontFamily="system-ui">10</text>
-              </svg>
-            </button>
-
-            {/* Skip +10 */}
-            <button onClick={() => skip(10)} title="+10 сек (→)" className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/70 hover:text-white">
-              <svg viewBox="0 0 24 24" className="w-[18px] h-[18px]" fill="currentColor">
-                <path d="M12 5V2l5 5-5 5V9c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6h2c0 4.42-3.58 8-8 8s-8-3.58-8-8 3.58-8 8-8z"/>
-                <text x="12" y="16.5" fontSize="5.5" textAnchor="middle" fontWeight="700" fontFamily="system-ui">10</text>
-              </svg>
-            </button>
-
-            {/* Time */}
-            <span className="text-white/70 text-[13px] font-mono tabular-nums ml-1">
-              {fmt(currentTime)}<span className="text-white/30 mx-1">/</span>{fmt(duration)}
-            </span>
-
-            <div className="flex-1" />
-
-            {/* Volume */}
-            <div className="flex items-center gap-2">
-              <button onClick={toggleMute} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/70 hover:text-white">
-                <VolumeIcon className="w-[18px] h-[18px]" />
-              </button>
-              <div
-                className="relative w-20 h-5 flex items-center cursor-pointer group/vol"
-                onClick={e => { const r = e.currentTarget.getBoundingClientRect(); handleVolume(Math.round(((e.clientX - r.left) / r.width) * 100)) }}
-              >
-                <div className="absolute left-0 right-0 h-1 group-hover/vol:h-[5px] transition-all duration-150 rounded-full bg-white/20">
-                  <div className="absolute inset-y-0 left-0 bg-white/80 rounded-full" style={{ width: `${muted ? 0 : volume}%` }}>
-                    <span className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-3 h-3 bg-white rounded-full shadow scale-0 group-hover/vol:scale-100 transition-transform" />
-                  </div>
+                  {module.quiz ? (
+                    <button
+                      disabled={isQuizLocked(module.id)}
+                      onClick={() => {
+                        setCurrentLesson(null)
+                        setCurrentQuiz(module.quiz)
+                        if (window.innerWidth < 1024) setIsSidebarOpen(false)
+                      }}
+                      className={`flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left transition-all ${currentQuiz?.id === module.quiz.id ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/20' : 'text-orange-600 hover:bg-orange-50'} ${isQuizLocked(module.id) ? 'cursor-not-allowed opacity-40 grayscale' : ''}`}
+                    >
+                      <div className={`shrink-0 ${currentQuiz?.id === module.quiz.id ? 'text-white' : data.passed_quiz_ids.includes(module.quiz.id) ? 'text-green-500' : 'text-orange-400'}`}>
+                        {data.passed_quiz_ids.includes(module.quiz.id) ? <CheckCircle2 size={18} /> : isQuizLocked(module.id) ? <Lock size={18} /> : <HelpCircle size={18} />}
+                      </div>
+                      <span className="text-xs font-bold">Тест модуля</span>
+                    </button>
+                  ) : null}
                 </div>
               </div>
-            </div>
-
-            {/* Fullscreen */}
-            <button onClick={toggleFullscreen} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors text-white/70 hover:text-white ml-1">
-              {fullscreen ? <Minimize className="w-[18px] h-[18px]" /> : <Maximize className="w-[18px] h-[18px]" />}
-            </button>
-
-          </div>
-        </div>
-      </div>
-
-      {/* Keyboard hint — fades in briefly on first load */}
-      {ready && !playing && (
-        <div className="absolute top-3 right-3 z-20 pointer-events-none">
-          <div className="flex gap-1.5 flex-wrap justify-end">
-            {[['Space','▶/⏸'], ['←/→','±10s'], ['F','⛶'], ['M','🔇']].map(([k, v]) => (
-              <span key={k} className="bg-black/60 text-white/50 text-[10px] rounded px-1.5 py-0.5 font-mono">{k} {v}</span>
             ))}
           </div>
-        </div>
+        </aside>
       )}
+
+      <main className="relative flex flex-1 flex-col overflow-hidden">
+        <div className="flex-1 overflow-y-auto bg-white">
+          {courseCompleted ? (
+            <CourseCompletedView data={data} onDashboard={() => navigate('/student/dashboard')} />
+          ) : currentLesson ? (
+            <LessonView
+              data={data}
+              lesson={currentLesson}
+              isFinal={isFinalLesson()}
+              onComplete={completeAndNext}
+            />
+          ) : currentQuiz ? (
+            <QuizTakingView
+              quiz={currentQuiz}
+              token={token!}
+              onCompleted={async (passed) => {
+                await load()
+                if (passed && isFinalQuiz(currentQuiz)) {
+                  setCurrentLesson(null)
+                  setCurrentQuiz(null)
+                  setCourseCompleted(true)
+                }
+              }}
+            />
+          ) : (
+            <div className="flex h-full items-center justify-center text-gray-400">Выберите урок для начала обучения</div>
+          )}
+        </div>
+      </main>
     </div>
   )
 }
 
-export default function CourseLearnPage() {
-  const { slug } = useParams<{ slug: string }>()
-  const [search] = useSearchParams()
-  const token = search.get('token') ?? ''
-  const [data, setData] = useState<CourseLearn | null>(null)
-  const [activeLessonId, setActiveLessonId] = useState<number | null>(null)
-  const [error, setError] = useState('')
+function LessonView({ data, lesson, isFinal, onComplete }: { data: CourseLearn; lesson: CourseLesson; isFinal: boolean; onComplete: () => void }) {
+  return (
+    <div className="mx-auto max-w-4xl space-y-10 px-6 py-10">
+      <div className="space-y-4">
+        <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-brand">
+          <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-brand" /> Сейчас изучаем
+        </div>
+        <h1 className="text-3xl font-black leading-tight tracking-tight text-gray-900 md:text-4xl">{lesson.title}</h1>
+      </div>
 
-  const load = () => courseApi.learn(slug ?? '', token).then((d) => {
-    setData(d)
-    setActiveLessonId((prev) => prev ?? d.lessons[0]?.id ?? null)
-  }).catch(() => setError('Доступ к курсу не найден'))
+      {lesson.bunny_video_id ? (
+        <div className="aspect-video overflow-hidden rounded-3xl border-4 border-white bg-black shadow-2xl shadow-gray-200">
+          <BunnyPlayer videoId={lesson.bunny_video_id} />
+        </div>
+      ) : null}
 
-  useEffect(() => { load() }, [slug, token])
+      {lesson.content ? (
+        <div
+          className="prose prose-brand max-w-none prose-headings:font-black prose-headings:tracking-tight prose-p:leading-relaxed prose-p:text-gray-600"
+          dangerouslySetInnerHTML={{ __html: sanitizeHtml(lesson.content) }}
+        />
+      ) : null}
 
-  const activeLesson = useMemo(() => data?.lessons.find((l) => l.id === activeLessonId) ?? null, [data, activeLessonId])
-  const completed = new Set(data?.completed_lesson_ids ?? [])
-  const progress = data?.student.progress_percent ?? 0
+      <div className="flex items-center justify-between border-t pt-10">
+        <div className="hidden sm:block">
+          <p className="mb-1 text-xs font-bold uppercase tracking-widest text-gray-400">Прогресс курса</p>
+          <div className="flex items-center gap-3">
+            <div className="h-1.5 w-32 overflow-hidden rounded-full bg-gray-100">
+              <div className="h-full bg-brand" style={{ width: `${data.student.progress_percent}%` }} />
+            </div>
+            <span className="text-sm font-black text-gray-900">{Math.round(data.student.progress_percent)}%</span>
+          </div>
+        </div>
+        <button onClick={onComplete} className="group flex items-center gap-3 rounded-2xl bg-gray-900 px-8 py-4 font-black text-white shadow-xl shadow-gray-200 transition-all hover:bg-brand">
+          {isFinal ? 'Завершить' : 'Завершить и далее'}
+          {!isFinal ? <ChevronRight size={20} className="transition-transform group-hover:translate-x-1" /> : null}
+        </button>
+      </div>
+      <div className="h-20" />
+    </div>
+  )
+}
 
-  const complete = async () => {
-    if (!activeLesson) return
-    await courseApi.completeLesson(activeLesson.id, token)
-    load()
+function CourseCompletedView({ data, onDashboard }: { data: CourseLearn; onDashboard: () => void }) {
+  return (
+    <div className="flex min-h-full items-center justify-center px-6 py-16">
+      <div className="w-full max-w-2xl text-center">
+        <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-emerald-500 text-white shadow-2xl shadow-emerald-500/25">
+          <Award size={48} />
+        </div>
+        <h1 className="mb-3 text-4xl font-black tracking-tight text-gray-900">Поздравляем с завершением курса!</h1>
+        <p className="mx-auto mb-8 max-w-xl text-lg leading-relaxed text-gray-500">
+          Вы прошли все доступные материалы курса «{data.course.title}».
+        </p>
+
+        {data.quiz_count > 0 && data.avg_quiz_score !== null ? (
+          <div className="mx-auto mb-8 max-w-sm rounded-2xl border bg-white p-6 shadow-sm">
+            <p className="mb-1 text-xs font-black uppercase tracking-widest text-gray-400">Средняя оценка по тестам</p>
+            <p className="text-5xl font-black text-emerald-600">{Math.round(data.avg_quiz_score)}%</p>
+          </div>
+        ) : null}
+
+        <button onClick={onDashboard} className="inline-flex items-center gap-3 rounded-2xl bg-gray-900 px-8 py-4 font-black text-white shadow-xl shadow-gray-200 transition-all hover:bg-brand">
+          <LayoutDashboard size={20} /> Вернуться на главную
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function QuizTakingView({ quiz, token, onCompleted }: { quiz: Quiz; token: string; onCompleted: (passed: boolean) => void | Promise<void> }) {
+  const [answers, setAnswers] = useState<Record<string, number[]>>({})
+  const [submitting, setSubmitting] = useState(false)
+  const [result, setResult] = useState<any>(null)
+
+  const toggleOption = (questionId: number, optionId: number, isMultiple: boolean) => {
+    setAnswers((previous) => {
+      const key = String(questionId)
+      const current = previous[key] || []
+      if (isMultiple) {
+        return { ...previous, [key]: current.includes(optionId) ? current.filter((id) => id !== optionId) : [...current, optionId] }
+      }
+      return { ...previous, [key]: [optionId] }
+    })
   }
 
-  if (error) return <div className="min-h-screen flex items-center justify-center text-red-500">{error}</div>
-  if (!data) return <div className="min-h-screen flex items-center justify-center text-gray-400">Загрузка...</div>
+  const submit = async () => {
+    if (!confirm('Отправить ответы на проверку?')) return
+    setSubmitting(true)
+    try {
+      const response = await courseApi.submitQuiz(quiz.id, token, answers)
+      setResult(response)
+      await onCompleted(response.passed)
+    } catch (error: any) {
+      alert(error.response?.data?.detail || 'Ошибка отправки')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (result) {
+    return (
+      <div className="mx-auto max-w-2xl px-6 py-20 text-center">
+        <div className={`mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full shadow-2xl ${result.passed ? 'bg-green-500 shadow-green-500/30' : 'bg-red-500 shadow-red-500/30'}`}>
+          {result.passed ? <Award size={48} className="text-white" /> : <X size={48} className="text-white" />}
+        </div>
+        <h2 className="mb-2 text-3xl font-black text-gray-900">{result.passed ? 'Тест успешно сдан!' : 'Тест не сдан'}</h2>
+        <p className="mb-8 text-lg text-gray-500">
+          Ваш результат: <span className={`font-black ${result.passed ? 'text-green-500' : 'text-red-500'}`}>{result.score}%</span> (проходной {quiz.passing_score}%)
+        </p>
+        {!result.passed ? (
+          <button onClick={() => { setResult(null); setAnswers({}) }} className="rounded-2xl bg-gray-900 px-8 py-4 font-black text-white transition-all hover:bg-brand">
+            Попробовать еще раз
+          </button>
+        ) : null}
+      </div>
+    )
+  }
 
   return (
-    <div className="min-h-screen bg-gray-100 flex">
-      <aside className="w-80 bg-white border-r h-screen sticky top-0 overflow-y-auto">
-        <div className="p-5 border-b">
-          <h1 className="font-bold text-lg">{data.course.title}</h1>
-          <p className="text-sm text-gray-400 mt-1">{data.student.name}</p>
-          <div className="mt-4 h-2 bg-gray-100 rounded-full overflow-hidden">
-            <div className="h-full bg-brand" style={{ width: `${progress}%` }} />
-          </div>
-          <p className="text-xs text-gray-400 mt-1">{progress}% пройдено</p>
+    <div className="mx-auto max-w-3xl space-y-10 px-6 py-10">
+      <div className="space-y-2 border-b pb-8 text-center">
+        <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-full bg-orange-50 text-orange-500">
+          <HelpCircle size={32} />
         </div>
-        <div className="p-3 space-y-4">
-          {data.modules.map((module) => (
-            <div key={module.id}>
-              <p className="text-xs font-bold text-gray-500 uppercase px-2 mb-1">{module.title}</p>
-              {(data.lessons.filter((l) => l.module_id === module.id)).map((lesson) => (
-                <button
-                  key={lesson.id}
-                  onClick={() => setActiveLessonId(lesson.id)}
-                  className={`w-full flex items-center gap-2 text-left rounded-lg px-2 py-2 text-sm ${activeLessonId === lesson.id ? 'bg-brand text-white' : 'hover:bg-gray-50 text-gray-700'}`}
-                >
-                  {completed.has(lesson.id) ? <CheckCircle size={16} /> : lesson.lesson_type === 'video' ? <PlayCircle size={16} /> : <Circle size={16} />}
-                  <span className="truncate">{lesson.title}</span>
-                </button>
-              ))}
-            </div>
-          ))}
-        </div>
-      </aside>
-      <main className="flex-1 p-8">
-        {activeLesson ? (
-          <div className="max-w-4xl mx-auto">
-            <div className="mb-5 flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-2xl font-bold">{activeLesson.title}</h2>
-                <p className="text-sm text-gray-400">{activeLesson.lesson_type === 'video' ? 'Видео-урок' : 'Текстовый урок'}</p>
+        <h1 className="text-3xl font-black text-gray-900">{quiz.title}</h1>
+        <p className="text-gray-500">{quiz.description || `Для прохождения нужно набрать минимум ${quiz.passing_score}% правильных ответов.`}</p>
+      </div>
+
+      <div className="space-y-8">
+        {quiz.questions?.map((question: any, index: number) => {
+          const isMultiple = question.question_type === 'multiple'
+          return (
+            <div key={question.id} className="rounded-3xl border-2 border-gray-100 bg-white p-8">
+              <h3 className="mb-6 flex gap-4 text-lg font-bold text-gray-900">
+                <span className="text-orange-500">{index + 1}.</span> {question.text}
+              </h3>
+              <div className="space-y-3">
+                {question.options?.map((option: any) => {
+                  const isSelected = (answers[question.id] || []).includes(option.id)
+                  return (
+                    <label key={option.id} className={`flex cursor-pointer items-start gap-4 rounded-2xl border-2 p-4 transition-all ${isSelected ? 'border-orange-500 bg-orange-50' : 'border-gray-100 hover:border-gray-300'}`}>
+                      <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center border-2 transition-all ${isMultiple ? 'rounded' : 'rounded-full'} ${isSelected ? 'border-orange-500 bg-orange-500' : 'border-gray-300'}`}>
+                        {isSelected ? <CheckCircle2 size={14} className="text-white" /> : null}
+                      </div>
+                      <span className={`text-sm font-semibold ${isSelected ? 'text-orange-900' : 'text-gray-700'}`}>{option.text}</span>
+                      <input
+                        type={isMultiple ? 'checkbox' : 'radio'}
+                        className="hidden"
+                        checked={isSelected}
+                        onChange={() => toggleOption(question.id, option.id, isMultiple)}
+                      />
+                    </label>
+                  )
+                })}
               </div>
-              <button onClick={complete} className="bg-brand text-white rounded-lg px-4 py-2 text-sm font-semibold">
-                {completed.has(activeLesson.id) ? 'Пройдено' : 'Отметить пройденным'}
-              </button>
             </div>
-            {activeLesson.lesson_type === 'video' ? <VideoLesson lesson={activeLesson} /> : null}
-            {activeLesson.content && <div className="bg-white border rounded-xl p-6 mt-5 whitespace-pre-wrap leading-relaxed">{activeLesson.content}</div>}
-          </div>
-        ) : (
-          <div className="text-center text-gray-400 mt-20">В курсе пока нет уроков</div>
-        )}
-      </main>
+          )
+        })}
+      </div>
+
+      <div className="flex justify-end pt-10">
+        <button
+          disabled={submitting || Object.keys(answers).length === 0}
+          onClick={submit}
+          className="rounded-2xl bg-orange-500 px-10 py-4 text-lg font-black text-white shadow-xl shadow-orange-200 transition-all hover:bg-orange-600 disabled:opacity-50"
+        >
+          {submitting ? 'Отправка...' : 'Завершить тест'}
+        </button>
+      </div>
+      <div className="h-20" />
     </div>
   )
 }

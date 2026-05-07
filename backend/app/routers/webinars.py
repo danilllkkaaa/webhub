@@ -12,7 +12,7 @@ from app.models.chat_message import ChatMessage
 from app.models.timeline_event import TimelineEvent, EventType
 from app.schemas.webinar import WebinarCreate, WebinarUpdate, WebinarOut
 from app.core.dependencies import get_current_user
-from app.core.youtube import extract_video_id
+from app.core.youtube import extract_video_id, is_video_exists
 from app.core.security import generate_viewer_token
 from app.websocket.manager import manager
 
@@ -56,6 +56,10 @@ async def create_webinar(
 ):
     slug = await _unique_slug(data.title, db)
     video_id = extract_video_id(data.youtube_url) if data.youtube_url else None
+    
+    if video_id and not await is_video_exists(video_id):
+        raise HTTPException(status_code=400, detail="YouTube video not found or is private")
+
     webinar = Webinar(
         slug=slug,
         invite_token=generate_viewer_token(),
@@ -92,9 +96,14 @@ async def update_webinar(
     webinar = result.scalar_one_or_none()
     if not webinar:
         raise HTTPException(status_code=404, detail="Webinar not found")
+    
     update_data = data.model_dump(exclude_unset=True)
     if "youtube_url" in update_data:
-        update_data["video_id"] = extract_video_id(update_data["youtube_url"]) if update_data["youtube_url"] else None
+        video_id = extract_video_id(update_data["youtube_url"]) if update_data["youtube_url"] else None
+        if video_id and not await is_video_exists(video_id):
+            raise HTTPException(status_code=400, detail="YouTube video not found or is private")
+        update_data["video_id"] = video_id
+
     was_finished = update_data.get("status") == WebinarStatus.finished
     for field, value in update_data.items():
         setattr(webinar, field, value)
@@ -145,6 +154,9 @@ async def create_scenario(
         ref_time = messages[0].created_at
 
     recording_video_id = extract_video_id(data.youtube_url) if data.youtube_url else None
+    if recording_video_id and not await is_video_exists(recording_video_id):
+        raise HTTPException(status_code=400, detail="YouTube video not found or is private")
+
     slug = await _unique_slug(f"{original.title}-scenarij", db)
     new_webinar = Webinar(
         slug=slug,

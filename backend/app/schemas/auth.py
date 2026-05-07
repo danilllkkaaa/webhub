@@ -88,3 +88,29 @@ class ChangePasswordRequest(BaseModel):
     @classmethod
     def validate_passwords(cls, value: str) -> str:
         return validate_password_strength(value)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ForgotPasswordResponse(BaseModel):
+    message: str
+    reset_token: Optional[str] = None
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+    password_confirm: str
+
+    @field_validator("new_password", "password_confirm")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return validate_password_strength(value)
+
+    @model_validator(mode="after")
+    def passwords_match(self):
+        if self.new_password != self.password_confirm:
+            raise ValueError("Passwords do not match")
+        return self

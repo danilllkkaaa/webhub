@@ -79,7 +79,7 @@ export default function ProjectsPage() {
         <div className="bg-brand text-white rounded-lg p-1.5 shrink-0">
           <Video size={18} />
         </div>
-        <span className="font-bold text-base tracking-tight">Webinar Platform</span>
+        <span className="font-bold text-base tracking-tight">StudentHub</span>
         <div className="ml-auto flex items-center gap-4">
           {userName && (
             <span className="text-sm text-gray-500 hidden sm:block">{userName}</span>

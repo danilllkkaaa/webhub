@@ -13,7 +13,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err.response?.status === 401) {
+    const adminToken = localStorage.getItem('admin_token')
+    const url = String(err.config?.url ?? '')
+    const isStudentRequest = url.startsWith('/course/') || url.startsWith('/student/')
+    if (err.response?.status === 401 && adminToken && !isStudentRequest) {
       localStorage.removeItem('admin_token')
       localStorage.removeItem('current_project')
       window.location.href = '/admin/login'

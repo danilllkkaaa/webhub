@@ -22,7 +22,7 @@ const NAV_MAIN = [
 ]
 
 const NAV_BOTTOM = [
-  { to: '/admin/about', icon: Info, label: 'О платформе' },
+  { to: '/admin/about', icon: Info, label: 'О StudentHub' },
   { to: '/admin/help', icon: HelpCircle, label: 'Справка' },
 ]
 
@@ -52,7 +52,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
         <div className="bg-brand rounded-lg p-1.5 shrink-0">
           <Video size={16} />
         </div>
-        <span className="font-bold text-sm tracking-tight leading-tight">Webinar<br />Platform</span>
+        <span className="font-bold text-sm tracking-tight leading-tight">StudentHub</span>
         {onClose && (
           <button onClick={onClose} className="ml-auto text-white/50 hover:text-white">
             <X size={18} />
@@ -148,7 +148,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="lg:ml-[252px] flex flex-col min-h-screen">
         <header className="lg:hidden bg-sidebar text-white px-4 py-3 flex items-center gap-3 shadow sticky top-0 z-20">
           <button onClick={() => setOpen(true)}><Menu size={22} /></button>
-          <span className="font-bold">Webinar Platform</span>
+          <span className="font-bold">StudentHub</span>
         </header>
 
         <main className="flex-1 p-5">{children}</main>

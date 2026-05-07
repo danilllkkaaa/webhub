@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/auth'
 import { useProjectStore } from '../../store/project'
 import {
   fieldClass,
+  parseApiError,
   validateEmail,
   validateFullName,
   validatePassword,
@@ -74,8 +75,8 @@ export default function RegisterOrganizationPage() {
       })
       clearProject()
       navigate('/admin/projects', { replace: true })
-    } catch (err: any) {
-      setError(err.response?.data?.detail ?? 'Не удалось зарегистрировать организацию')
+    } catch (err: unknown) {
+      setError(parseApiError(err, 'Не удалось зарегистрировать организацию'))
     } finally {
       setLoading(false)
     }

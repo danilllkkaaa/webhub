@@ -8,7 +8,7 @@ from app.config import settings
 from app.core.security import hash_password, verify_password, generate_viewer_token
 from app.models import User, Webinar
 
-from app.routers import auth, webinars, registrations, watch, chat, timeline, analytics, public_webinar, broadcast, projects, courses, videos
+from app.routers import auth, webinars, registrations, watch, chat, timeline, analytics, public_webinar, broadcast, projects, courses, videos, storage, staff
 
 
 @asynccontextmanager
@@ -39,7 +39,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="Webinar Platform API", lifespan=lifespan)
+app = FastAPI(title="StudentHub API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -61,6 +61,8 @@ app.include_router(broadcast.router)
 app.include_router(projects.router)
 app.include_router(courses.router)
 app.include_router(videos.router)
+app.include_router(storage.router)
+app.include_router(staff.router)
 
 
 @app.get("/health")

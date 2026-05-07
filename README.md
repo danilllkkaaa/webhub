@@ -1,4 +1,4 @@
-# Webinar Platform MVP
+# StudentHub MVP
 
 Платформа для вебинаров, автовебинаров и онлайн-курсов на базе YouTube.
 
@@ -15,6 +15,32 @@ docker compose up -d --build
 - Admin: http://localhost/admin
 - API docs: http://localhost/api/docs
 
+## Проверка после изменений
+
+Минимальная проверка сборки и запуска:
+
+```powershell
+cd frontend
+npm run build
+cd ..
+docker compose up -d --build
+docker compose exec -T backend python -m compileall app
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\auth-smoke.ps1
+```
+
+Для проверки публичного туннеля или другого адреса:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -BaseUrl "https://your-public-url.example"
+```
+
+Если нужно проверить только HTTP-роуты без Docker Compose:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\smoke.ps1 -SkipDocker
+```
+
 ## Администратор
 
 Локальные значения берутся из `.env`.
@@ -23,6 +49,20 @@ docker compose up -d --build
 - Password: `ADMIN_PASSWORD`
 
 Перед публикацией поменяйте `SECRET_KEY` и `ADMIN_PASSWORD` в `.env`.
+
+## Восстановление пароля
+
+Backend уже имеет endpoints для запроса и применения reset token:
+
+- `POST /api/auth/forgot-password`
+- `POST /api/auth/reset-password`
+
+До подключения email-провайдера локальная разработка может показывать dev reset link при `EXPOSE_PASSWORD_RESET_TOKEN=true`.
+В production держите:
+
+```env
+EXPOSE_PASSWORD_RESET_TOKEN=false
+```
 
 ## Миграции базы
 

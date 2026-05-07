@@ -34,7 +34,7 @@ async def create_video_entry(
     _: User = Depends(get_current_user),
 ):
     if not settings.bunny_api_key or not settings.bunny_library_id:
-        raise HTTPException(status_code=500, detail="Bunny not configured")
+        raise HTTPException(status_code=500, detail="Video storage is not configured")
     video = await create_video(data.title)
     video_id = video["guid"]
     return VideoUploadInfo(
@@ -52,7 +52,6 @@ async def video_status(
 ):
     video = await get_video(video_id)
     status = video.get("status", 0)
-    # Bunny status: 0=Queued, 1=Processing, 2=Encoding, 3=Finished, 4=ResolutionError, 5=UploadError, 6=Failed
     return VideoStatus(
         status=status,
         encode_progress=video.get("encodeProgress", 0),

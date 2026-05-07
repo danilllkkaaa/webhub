@@ -2,6 +2,8 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { RequireAuth, RequireProject } from './components/admin/RouteGuards'
 
 import LoginPage from './pages/admin/LoginPage'
+import ForgotPasswordPage from './pages/admin/ForgotPasswordPage'
+import ResetPasswordPage from './pages/admin/ResetPasswordPage'
 import RegisterOrganizationPage from './pages/admin/RegisterOrganizationPage'
 import ProjectsPage from './pages/admin/ProjectsPage'
 import DashboardPage from './pages/admin/DashboardPage'
@@ -21,6 +23,7 @@ import RegisterPage from './pages/public/RegisterPage'
 import WatchPage from './pages/public/WatchPage'
 import CourseJoinPage from './pages/public/CourseJoinPage'
 import CourseLearnPage from './pages/public/CourseLearnPage'
+import StudentDashboardPage from './pages/public/StudentDashboardPage'
 
 export default function App() {
   return (
@@ -28,6 +31,8 @@ export default function App() {
       <Routes>
         {/* Auth */}
         <Route path="/admin/login" element={<LoginPage />} />
+        <Route path="/admin/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/admin/reset-password" element={<ResetPasswordPage />} />
         <Route path="/admin/register" element={<RegisterOrganizationPage />} />
 
         {/* Project selector */}
@@ -58,7 +63,11 @@ export default function App() {
         {/* Public */}
         <Route path="/join/:inviteToken" element={<RegisterPage />} />
         <Route path="/webinars/:slug/watch" element={<WatchPage />} />
+        
+        {/* Student Portal */}
+        <Route path="/course/invite/:inviteToken" element={<CourseJoinPage />} />
         <Route path="/course/join/:inviteToken" element={<CourseJoinPage />} />
+        <Route path="/student/dashboard" element={<StudentDashboardPage />} />
         <Route path="/course/:slug/learn" element={<CourseLearnPage />} />
 
         <Route path="*" element={<Navigate to="/admin/projects" replace />} />

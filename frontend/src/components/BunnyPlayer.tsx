@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 
 const CDN = import.meta.env.VITE_BUNNY_CDN_HOSTNAME ?? ''
+const PLAYBACK_RATES = [0.5, 1, 1.25, 1.5, 2]
 
 function fmt(s: number) {
   if (!s || isNaN(s)) return '0:00'
@@ -37,6 +38,7 @@ export default function BunnyPlayer({ videoId, onEnded, autoplay = false }: Prop
   const [muted, setMuted] = useState(false)
   const [fullscreen, setFullscreen] = useState(false)
   const [ctrlVisible, setCtrlVisible] = useState(true)
+  const [playbackRate, setPlaybackRate] = useState(1)
 
   const playingRef = useRef(false)
   const mutedRef = useRef(false)
@@ -80,6 +82,7 @@ export default function BunnyPlayer({ videoId, onEnded, autoplay = false }: Prop
     }
 
     video.volume = volume / 100
+    video.playbackRate = playbackRate
 
     return () => {
       video.removeEventListener('canplay', onCanPlay)
@@ -93,6 +96,10 @@ export default function BunnyPlayer({ videoId, onEnded, autoplay = false }: Prop
       hlsRef.current?.destroy()
     }
   }, [videoId, src])
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = playbackRate
+  }, [playbackRate])
 
   useEffect(() => {
     const h = () => setFullscreen(!!document.fullscreenElement)
@@ -151,6 +158,12 @@ export default function BunnyPlayer({ videoId, onEnded, autoplay = false }: Prop
     v.muted = !muted
     setMuted(!muted)
     if (muted && volume === 0) { handleVolume(50) }
+  }
+
+  const handlePlaybackRate = (rate: number) => {
+    const v = videoRef.current
+    setPlaybackRate(rate)
+    if (v) v.playbackRate = rate
   }
 
   const toggleFullscreen = () =>
@@ -247,6 +260,20 @@ export default function BunnyPlayer({ videoId, onEnded, autoplay = false }: Prop
             </span>
 
             <div className="flex-1" />
+
+            {/* Speed */}
+            <select
+              value={playbackRate}
+              onChange={(e) => handlePlaybackRate(Number(e.target.value))}
+              className="h-8 rounded-lg border border-white/10 bg-black/40 px-2 text-xs font-semibold text-white outline-none hover:bg-white/10"
+              aria-label="Playback speed"
+            >
+              {PLAYBACK_RATES.map((rate) => (
+                <option key={rate} value={rate} className="bg-gray-900 text-white">
+                  {rate}x
+                </option>
+              ))}
+            </select>
 
             {/* Volume */}
             <div className="flex items-center gap-2">

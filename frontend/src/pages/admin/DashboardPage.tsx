@@ -234,7 +234,7 @@ export default function DashboardPage() {
                     {courses.slice(0, 3).map((c) => (
                       <Link
                         key={c.id}
-                        to={`/admin/courses/${c.id}/builder`}
+                        to={`/admin/courses/${c.public_id}/builder`}
                         className="flex items-center gap-3 px-2 py-2 rounded-xl hover:bg-gray-50 transition group"
                       >
                         <div className="flex-1 min-w-0">
@@ -403,11 +403,11 @@ export default function DashboardPage() {
 
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
             <div className="flex items-center justify-between">
-              <p className="text-xs font-semibold text-gray-700">О платформе</p>
+              <p className="text-xs font-semibold text-gray-700">О StudentHub</p>
               <ExternalLink size={12} className="text-gray-300" />
             </div>
             <p className="text-xs text-gray-400 mt-0.5 leading-relaxed">
-              Webinar Platform — ваш инструмент для автовебинаров
+              StudentHub — ваш инструмент для автовебинаров
             </p>
             <div className="mt-3 flex items-center gap-1.5">
               <Radio size={12} className="text-brand" />

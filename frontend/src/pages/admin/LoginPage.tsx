@@ -44,7 +44,7 @@ export default function LoginPage() {
       <div className="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm">
         <div className="flex flex-col items-center mb-6">
           <div className="bg-brand text-white rounded-full p-3 mb-3"><Video size={28} /></div>
-          <h1 className="text-xl font-bold">Webinar Platform</h1>
+          <h1 className="text-xl font-bold">StudentHub</h1>
           <p className="text-gray-500 text-sm">Войти в панель управления</p>
         </div>
         <form onSubmit={submit} className="space-y-4" noValidate>
@@ -62,7 +62,12 @@ export default function LoginPage() {
             {showError('email') && <p className="mt-1 text-xs text-red-500">{showError('email')}</p>}
           </div>
           <div>
-            <label className="block text-sm font-medium mb-1">Пароль</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-sm font-medium">Пароль</label>
+              <Link to="/admin/forgot-password" className="text-xs font-semibold text-brand hover:text-brand-dark">
+                Забыли пароль?
+              </Link>
+            </div>
             <input
               type="password"
               value={password}

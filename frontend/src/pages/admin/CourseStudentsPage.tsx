@@ -18,7 +18,7 @@ const STATUS_CLASSES: Record<CourseStudentStatus, string> = {
 
 export default function CourseStudentsPage() {
   const { id } = useParams<{ id: string }>()
-  const courseId = Number(id)
+  const courseId = id ?? ''
   const [students, setStudents] = useState<CourseStudent[]>([])
   const [loadingId, setLoadingId] = useState<number | null>(null)
 

@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import { Upload, CheckCircle, AlertCircle, Film } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { AlertCircle, CheckCircle, Film, Upload } from 'lucide-react'
 import { videoApi } from '../api/videos'
 
 interface Props {
@@ -12,54 +12,88 @@ type Stage = 'idle' | 'uploading' | 'encoding' | 'done' | 'error'
 
 export default function VideoUploader({ title, onComplete, existingVideoId }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   const [stage, setStage] = useState<Stage>(existingVideoId ? 'done' : 'idle')
   const [uploadPct, setUploadPct] = useState(0)
   const [encodePct, setEncodePct] = useState(0)
   const [error, setError] = useState('')
   const [videoId, setVideoId] = useState(existingVideoId ?? '')
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const stopPoll = () => { if (pollRef.current) clearInterval(pollRef.current) }
+  const stopPoll = () => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current)
+      pollRef.current = null
+    }
+  }
 
-  const pollStatus = (vid: string) => {
+  useEffect(() => {
+    stopPoll()
+    setStage(existingVideoId ? 'done' : 'idle')
+    setVideoId(existingVideoId ?? '')
+    setUploadPct(0)
+    setEncodePct(0)
+    setError('')
+
+    return stopPoll
+  }, [existingVideoId])
+
+  const pollStatus = (id: string) => {
+    stopPoll()
+    let attempts = 0
+    const maxAttempts = 200
+
     pollRef.current = setInterval(async () => {
+      attempts += 1
+      if (attempts > maxAttempts) {
+        stopPoll()
+        setStage('error')
+        setError('Превышено время подготовки видео')
+        return
+      }
+
       try {
-        const s = await videoApi.status(vid)
-        setEncodePct(s.encode_progress)
-        if (s.ready) {
+        const status = await videoApi.status(id)
+        setEncodePct(status.encode_progress)
+        if (status.ready) {
           stopPoll()
           setStage('done')
-          onComplete(vid)
-        }
-        if (s.status === 5 || s.status === 6) {
+          onComplete(id)
+        } else if (status.status === 5 || status.status === 6) {
           stopPoll()
           setStage('error')
-          setError('Ошибка кодирования видео')
+          setError('Не удалось подготовить видео')
         }
-      } catch {}
+      } catch {
+        // Network hiccups during processing are common; keep polling until timeout.
+      }
     }, 3000)
   }
 
   const handleFile = async (file: File) => {
     if (!file.type.startsWith('video/')) {
-      setError('Выберите видео-файл')
+      setError('Выберите видеофайл')
       return
     }
+
+    stopPoll()
     setError('')
     setStage('uploading')
     setUploadPct(0)
+    setEncodePct(0)
+
     try {
       const info = await videoApi.create(title || file.name)
       setVideoId(info.video_id)
 
       await new Promise<void>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
-        xhr.upload.addEventListener('progress', (e) => {
-          if (e.lengthComputable) setUploadPct(Math.round((e.loaded / e.total) * 100))
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable) setUploadPct(Math.round((event.loaded / event.total) * 100))
         })
         xhr.addEventListener('load', () => {
           if (xhr.status >= 200 && xhr.status < 300) resolve()
-          else reject(new Error(`Upload failed: ${xhr.status}`))
+          else reject(new Error('Upload failed'))
         })
         xhr.addEventListener('error', () => reject(new Error('Network error')))
         xhr.open('PUT', info.upload_url)
@@ -68,32 +102,39 @@ export default function VideoUploader({ title, onComplete, existingVideoId }: Pr
       })
 
       setStage('encoding')
-      setEncodePct(0)
       pollStatus(info.video_id)
-    } catch (e: any) {
+    } catch {
+      stopPoll()
       setStage('error')
-      setError(e?.message ?? 'Ошибка загрузки')
+      setError('Не удалось загрузить видео')
     }
   }
 
-  const onDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    const file = e.dataTransfer.files[0]
+  const reset = () => {
+    stopPoll()
+    setStage('idle')
+    setVideoId('')
+    setUploadPct(0)
+    setEncodePct(0)
+    setError('')
+    if (inputRef.current) inputRef.current.value = ''
+  }
+
+  const onDrop = (event: React.DragEvent) => {
+    event.preventDefault()
+    const file = event.dataTransfer.files[0]
     if (file) handleFile(file)
   }
 
   if (stage === 'done') {
     return (
-      <div className="flex items-center gap-3 border border-green-200 bg-green-50 rounded-xl px-4 py-3">
-        <CheckCircle size={18} className="text-green-500 shrink-0" />
-        <div className="flex-1 min-w-0">
+      <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+        <CheckCircle size={18} className="shrink-0 text-green-500" />
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-green-800">Видео загружено</p>
-          <p className="text-xs text-green-600 font-mono truncate">{videoId}</p>
+          <p className="truncate font-mono text-xs text-green-600">{videoId}</p>
         </div>
-        <button
-          onClick={() => { setStage('idle'); setVideoId(''); setUploadPct(0); setEncodePct(0) }}
-          className="text-xs text-green-600 hover:text-green-800 underline shrink-0"
-        >
+        <button type="button" onClick={reset} className="shrink-0 text-xs text-green-600 underline hover:text-green-800">
           Заменить
         </button>
       </div>
@@ -102,13 +143,13 @@ export default function VideoUploader({ title, onComplete, existingVideoId }: Pr
 
   if (stage === 'uploading') {
     return (
-      <div className="border rounded-xl px-4 py-4 space-y-2">
+      <div className="space-y-2 rounded-xl border px-4 py-4">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-600">Загрузка на Bunny...</span>
+          <span className="text-gray-600">Загрузка видео...</span>
           <span className="font-mono font-semibold text-brand">{uploadPct}%</span>
         </div>
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-          <div className="h-full bg-brand rounded-full transition-all duration-300" style={{ width: `${uploadPct}%` }} />
+        <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+          <div className="h-full rounded-full bg-brand transition-all duration-300" style={{ width: `${uploadPct}%` }} />
         </div>
       </div>
     )
@@ -116,15 +157,15 @@ export default function VideoUploader({ title, onComplete, existingVideoId }: Pr
 
   if (stage === 'encoding') {
     return (
-      <div className="border rounded-xl px-4 py-4 space-y-2">
+      <div className="space-y-2 rounded-xl border px-4 py-4">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-gray-600 flex items-center gap-2">
-            <Film size={14} className="animate-pulse text-brand" /> Кодирование...
+          <span className="flex items-center gap-2 text-gray-600">
+            <Film size={14} className="animate-pulse text-brand" /> Подготовка видео...
           </span>
           <span className="font-mono font-semibold text-brand">{encodePct}%</span>
         </div>
-        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-          <div className="h-full bg-brand/60 rounded-full transition-all duration-500" style={{ width: `${encodePct}%` }} />
+        <div className="h-2 overflow-hidden rounded-full bg-gray-100">
+          <div className="h-full rounded-full bg-brand/60 transition-all duration-500" style={{ width: `${encodePct}%` }} />
         </div>
         <p className="text-xs text-gray-400">Это может занять несколько минут</p>
       </div>
@@ -134,21 +175,30 @@ export default function VideoUploader({ title, onComplete, existingVideoId }: Pr
   return (
     <div>
       <div
-        className="border-2 border-dashed border-gray-200 rounded-xl p-6 text-center cursor-pointer hover:border-brand/50 hover:bg-brand-light/30 transition-colors"
+        className="cursor-pointer rounded-xl border-2 border-dashed border-gray-200 p-6 text-center transition-colors hover:border-brand/50 hover:bg-brand-light/30"
         onDrop={onDrop}
-        onDragOver={(e) => e.preventDefault()}
+        onDragOver={(event) => event.preventDefault()}
         onClick={() => inputRef.current?.click()}
       >
         <Upload size={24} className="mx-auto mb-2 text-gray-300" />
         <p className="text-sm font-medium text-gray-600">Перетащите видео или нажмите для выбора</p>
-        <p className="text-xs text-gray-400 mt-1">MP4, MOV, AVI — до нескольких ГБ</p>
+        <p className="mt-1 text-xs text-gray-400">MP4, MOV, AVI - до нескольких ГБ</p>
       </div>
-      {error && (
-        <div className="flex items-center gap-2 mt-2 text-red-600 text-xs">
+      {error ? (
+        <div className="mt-2 flex items-center gap-2 text-xs text-red-600">
           <AlertCircle size={13} /> {error}
         </div>
-      )}
-      <input ref={inputRef} type="file" accept="video/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f) }} />
+      ) : null}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="video/*"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) handleFile(file)
+        }}
+      />
     </div>
   )
 }

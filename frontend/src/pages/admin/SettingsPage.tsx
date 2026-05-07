@@ -2,6 +2,7 @@ import { useEffect, useState, FormEvent } from 'react'
 import { api } from '../../api/client'
 import AdminLayout from '../../components/admin/AdminLayout'
 import { ChevronRight, X, Check, AlertCircle } from 'lucide-react'
+import { LanguageSwitcher } from '../../i18n/LanguageSwitcher'
 
 interface Profile {
   id: number
@@ -278,6 +279,18 @@ export default function SettingsPage() {
               )}
             </div>
           ))}
+        </div>
+
+        <div className="bg-white rounded-2xl border overflow-hidden">
+          <div className="px-5 py-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-bold text-gray-900">Язык интерфейса</h2>
+                <p className="text-xs text-gray-400 mt-0.5">Выберите язык панели и публичных страниц</p>
+              </div>
+              <LanguageSwitcher />
+            </div>
+          </div>
         </div>
 
         <div className="bg-white rounded-2xl border overflow-hidden">

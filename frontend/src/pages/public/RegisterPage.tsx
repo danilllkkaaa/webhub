@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { api } from '../../api/client'
 import { Video } from 'lucide-react'
-import { fieldClass, validateEmail, validateFullName, validatePhone } from '../../utils/validation'
+import { fieldClass, parseApiError, validateEmail, validateFullName, validatePhone } from '../../utils/validation'
 
 type FieldName = 'name' | 'phone' | 'email'
 
@@ -66,8 +66,8 @@ export default function RegisterPage() {
       const { data } = await api.post(`/invite/${inviteToken}/join`, payload)
       if (!webinar?.slug) throw new Error('Missing webinar slug')
       navigate(`/webinars/${webinar.slug}/watch?token=${data.token}`)
-    } catch (e: any) {
-      setError(e?.response?.data?.detail ?? 'Не удалось открыть трансляцию')
+    } catch (e: unknown) {
+      setError(parseApiError(e, 'Не удалось открыть трансляцию'))
     } finally {
       setLoading(false)
     }

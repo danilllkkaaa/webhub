@@ -8,6 +8,8 @@ declare global {
   interface Window { YT: any; onYouTubeIframeAPIReady: () => void }
 }
 
+const PLAYBACK_RATES = [0.5, 1, 1.25, 1.5, 2]
+
 function fmtElapsed(s: number) {
   if (!s || isNaN(s)) return '0:00'
   const h = Math.floor(s / 3600)
@@ -83,10 +85,13 @@ export default function WatchPage() {
   const [playerFullscreen, setPlayerFullscreen] = useState(false)
   const [ctrlVisible, setCtrlVisible] = useState(true)
   const [elapsed, setElapsed] = useState(0)
+  const [playerPlaybackRate, setPlayerPlaybackRate] = useState(1)
   const playerMutedRef = useRef(false)
   const playerVolumeRef = useRef(80)
+  const playerPlaybackRateRef = useRef(1)
   useEffect(() => { playerMutedRef.current = playerMuted }, [playerMuted])
   useEffect(() => { playerVolumeRef.current = playerVolume }, [playerVolume])
+  useEffect(() => { playerPlaybackRateRef.current = playerPlaybackRate }, [playerPlaybackRate])
 
   // Load info
   useEffect(() => {
@@ -142,6 +147,7 @@ export default function WatchPage() {
               setElapsed(info.autowebinar_offset)
             }
             ev.target.playVideo()
+            try { ev.target.setPlaybackRate(playerPlaybackRateRef.current) } catch {}
             // unmute after brief delay — muted autoplay is universally allowed,
             // then we restore sound once playback has started
             setTimeout(() => {
@@ -226,6 +232,11 @@ export default function WatchPage() {
     setPlayerVolume(val); playerRef.current?.setVolume(val)
     if (val === 0) { playerRef.current?.mute(); setPlayerMuted(true) }
     else { playerRef.current?.unMute(); setPlayerMuted(false) }
+  }
+
+  const handlePlaybackRate = (rate: number) => {
+    setPlayerPlaybackRate(rate)
+    try { playerRef.current?.setPlaybackRate?.(rate) } catch {}
   }
 
   const toggleFullscreen = () =>
@@ -456,6 +467,20 @@ export default function WatchPage() {
                 )}
 
                 <div className="flex-1" />
+
+                {/* Speed */}
+                <select
+                  value={playerPlaybackRate}
+                  onChange={(e) => handlePlaybackRate(Number(e.target.value))}
+                  className="h-8 rounded-lg border border-white/10 bg-black/40 px-2 text-xs font-semibold text-white outline-none hover:bg-white/10"
+                  aria-label="Playback speed"
+                >
+                  {PLAYBACK_RATES.map((rate) => (
+                    <option key={rate} value={rate} className="bg-gray-900 text-white">
+                      {rate}x
+                    </option>
+                  ))}
+                </select>
 
                 {/* Volume */}
                 <div className="flex items-center gap-2">

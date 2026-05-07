@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +7,7 @@ from app.core.security import hash_password
 from app.database import get_db
 from app.models.project import Project
 from app.models.project_member import ProjectMember
+from app.models.security import AuditEvent
 from app.models.user import User, UserRole
 from app.schemas.staff import (
     ProjectMemberCreate,
@@ -18,6 +19,7 @@ from app.schemas.staff import (
     StaffUserOut,
 )
 from app.services.access import get_project_for_user, is_org_owner, require_organization_id, require_project_permission
+from app.services.audit import write_audit_log
 
 router = APIRouter(prefix="/admin/staff", tags=["staff"])
 
@@ -152,6 +154,7 @@ async def list_staff(
 @router.post("/", response_model=StaffUserOut, status_code=201)
 async def create_staff_access(
     data: StaffCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -163,6 +166,15 @@ async def create_staff_access(
         staff_user.full_name = data.full_name.strip()
     if staff_user.role == UserRole.owner:
         raise HTTPException(status_code=400, detail="Owner cannot be added as project employee")
+    await write_audit_log(
+        db,
+        AuditEvent.staff_access_granted,
+        request=request,
+        actor=current_user,
+        target_user_id=staff_user.id,
+        project_id=data.project_id,
+        detail=str(data.project_role),
+    )
     await db.commit()
     await db.refresh(staff_user)
     return await _staff_user_out(staff_user, db)
@@ -231,6 +243,7 @@ async def list_project_members(
 async def add_project_member(
     project_id: int,
     data: ProjectMemberCreate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -242,6 +255,15 @@ async def add_project_member(
     member = await _upsert_project_member(project_id, staff_user, data.role, current_user, db)
     if data.full_name and not staff_user.full_name:
         staff_user.full_name = data.full_name.strip()
+    await write_audit_log(
+        db,
+        AuditEvent.staff_access_granted,
+        request=request,
+        actor=current_user,
+        target_user_id=staff_user.id,
+        project_id=project_id,
+        detail=str(data.role),
+    )
     await db.commit()
     await db.refresh(member)
     return _member_out(member, staff_user)
@@ -252,6 +274,7 @@ async def update_project_member(
     project_id: int,
     user_id: int,
     data: ProjectMemberUpdate,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -268,6 +291,15 @@ async def update_project_member(
     member, staff_user = row
     member.role = data.role
     member.invited_by_id = current_user.id
+    await write_audit_log(
+        db,
+        AuditEvent.staff_access_updated,
+        request=request,
+        actor=current_user,
+        target_user_id=staff_user.id,
+        project_id=project_id,
+        detail=str(data.role),
+    )
     await db.commit()
     await db.refresh(member)
     return _member_out(member, staff_user)
@@ -277,6 +309,7 @@ async def update_project_member(
 async def remove_project_member(
     project_id: int,
     user_id: int,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -287,5 +320,14 @@ async def remove_project_member(
     member = result.scalar_one_or_none()
     if not member:
         raise HTTPException(status_code=404, detail="Project member not found")
+    await write_audit_log(
+        db,
+        AuditEvent.staff_access_removed,
+        request=request,
+        actor=current_user,
+        target_user_id=user_id,
+        project_id=project_id,
+        detail=str(member.role),
+    )
     await db.delete(member)
     await db.commit()

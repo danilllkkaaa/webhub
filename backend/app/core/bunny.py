@@ -41,17 +41,20 @@ async def delete_video(video_id: str) -> None:
 
 def generate_secure_url(video_id: str, expires_in: int = 3600) -> str:
     """
-    Generates a secure URL for Bunny.net HLS playback.
-    Requires BUNNY_SECURITY_KEY and BUNNY_CDN_HOSTNAME to be set.
+    Generates a Bunny.net HLS playback URL.
+    If BUNNY_SECURITY_KEY is set, produces a signed URL. Otherwise plain URL.
+    Raises ValueError if BUNNY_CDN_HOSTNAME is not configured.
     """
-    if not settings.bunny_security_key or not settings.bunny_cdn_hostname:
-        return f"https://{settings.bunny_cdn_hostname}/{video_id}/playlist.m3u8"
+    if not settings.bunny_cdn_hostname:
+        raise ValueError("BUNNY_CDN_HOSTNAME is not configured")
+
+    path = f"/{video_id}/playlist.m3u8"
+
+    if not settings.bunny_security_key:
+        return f"https://{settings.bunny_cdn_hostname}{path}"
 
     expires = int(time.time()) + expires_in
-    path = f"/{video_id}/playlist.m3u8"
-    
-    # Bunny.net token format: md5(security_key + path + expires)
     token_input = f"{settings.bunny_security_key}{path}{expires}"
     token = hashlib.md5(token_input.encode()).hexdigest()
-    
+
     return f"https://{settings.bunny_cdn_hostname}{path}?token={token}&expires={expires}"

@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     bunny_library_id: str = ""
     bunny_cdn_hostname: str = ""
     bunny_security_key: str = ""
+    password_reset_token_minutes: int = 30
+    expose_password_reset_token: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:
